@@ -1,2 +1,3 @@
 import { Dashboard } from "@/components/dashboard/dashboard";
-export default function DashboardPage() { return <Dashboard />; }
+import { getDashboardData } from "@/lib/dashboard/data";
+export default async function DashboardPage() { return <Dashboard data={await getDashboardData()} />; }
