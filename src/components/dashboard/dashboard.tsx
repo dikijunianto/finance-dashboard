@@ -1,10 +1,195 @@
 "use client";
-import { Area, AreaChart, Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+} from "recharts";
 import { CheckCircle2 } from "lucide-react";
 import { rupiah } from "@/lib/currency";
 import type { getDashboardData } from "@/lib/dashboard/data";
 type Data = Awaited<ReturnType<typeof getDashboardData>>;
 const colors = ["#15803d", "#38bdf8", "#f59e0b", "#a78bfa", "#fb7185"];
-function Card({ title, value, caption }: { title:string; value:string; caption?:string }) { return <section className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm"><p className="text-sm text-[var(--muted)]">{title}</p><p className="mt-2 text-2xl font-bold">{value}</p>{caption && <p className="mt-2 text-xs text-[var(--muted)]">{caption}</p>}</section>; }
-export function Dashboard({ data }: { data: Data }) { return <div className="mx-auto max-w-7xl p-5 md:p-8"><header className="mb-8 flex justify-between"><div><h1 className="text-3xl font-bold">Dashboard</h1><p className="text-[var(--muted)]">Kondisi finansial Anda dalam sekali lihat.</p></div><div className="rounded-xl border bg-white px-3 py-2 text-sm">{data.month}</div></header><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Card title="Cash Available" value={rupiah(data.cashAvailable)} caption="Di akun aktif"/><Card title="Bills This Month" value={rupiah(data.bills.unpaidTotal)} caption={`${data.bills.unpaidCount} belum dibayar`}/><Card title="Remaining Debt" value={rupiah(data.debtTotal)} caption={`${data.debtCount} utang aktif`}/><Card title="Monthly Surplus" value={rupiah(data.surplus)}/></div><div className="mt-4 grid gap-4 lg:grid-cols-3"><Card title="Saving Rate" value={`${data.savingRate}%`}/><Card title="Safe-to-Spend" value={rupiah(data.safe)} caption={data.days ? `${rupiah(data.dailySafe)} per hari · ${data.days} hari` : "Buat payday plan untuk perhitungan harian"}/><Card title="Financial Status" value={data.status.label} caption="Dihitung dari cash flow dan dana fleksibel"/></div><div className="mt-6 grid gap-6 xl:grid-cols-2"><Chart title="Monthly Cash Flow"><ResponsiveContainer width="100%" height={240}><BarChart data={data.cashFlow}><XAxis dataKey="month"/><Tooltip formatter={v => rupiah(Number(v))}/><Bar dataKey="income" fill="#15803d"/><Bar dataKey="expenses" fill="#cbd5e1"/></BarChart></ResponsiveContainer></Chart><Chart title="Net Worth"><ResponsiveContainer width="100%" height={240}><AreaChart data={data.netWorth}><XAxis dataKey="month"/><Tooltip formatter={v => rupiah(Number(v))}/><Area dataKey="value" stroke="#15803d" fill="#dcfce7"/></AreaChart></ResponsiveContainer></Chart></div><div className="mt-6 grid gap-6 xl:grid-cols-2"><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Tagihan mendatang</h2>{data.billsList.length ? data.billsList.map(b => <div key={b.id} className="mt-3 flex justify-between text-sm"><span>{b.name}<small className="block text-slate-500">{b.status} · {b.dueDate}</small></span><strong>{rupiah(b.amount)}</strong></div>) : <p className="mt-5 text-sm text-slate-500">Belum ada tagihan belum dibayar.</p>}</section><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Budget allocation</h2>{data.budget.length ? <ResponsiveContainer width="100%" height={180}><PieChart><Pie data={data.budget} dataKey="value" innerRadius={45} outerRadius={70}>{data.budget.map((x,i) => <Cell key={x.name} fill={colors[i % colors.length]}/>)}</Pie><Tooltip formatter={v => rupiah(Number(v))}/></PieChart></ResponsiveContainer> : <p className="mt-5 text-sm text-slate-500">Belum ada alokasi budget bulan ini.</p>}</section></div><div className="mt-6 grid gap-6 xl:grid-cols-2"><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Payday plan</h2>{data.allocations.length ? data.allocations.map(a => <p key={a.id} className="mt-3 flex justify-between text-sm"><span className="flex gap-2"><CheckCircle2 size={17} className={a.isCompleted ? "text-emerald-600" : "text-slate-300"}/>{a.name}</span><strong>{rupiah(a.amount)}</strong></p>) : <p className="mt-5 text-sm text-slate-500">Belum ada payday plan.</p>}</section><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">CFO Notes</h2>{data.notes.length ? <ul className="mt-4 space-y-3 text-sm">{data.notes.map(n => <li key={n.id}>• {n.content}</li>)}</ul> : <p className="mt-5 text-sm text-slate-500">Belum ada CFO notes.</p>}</section></div></div>; }
-function Chart({ title, children }: { title:string; children:React.ReactNode }) { return <section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">{title}</h2><div className="mt-3">{children}</div></section>; }
+function Card({
+  title,
+  value,
+  caption,
+}: {
+  title: string;
+  value: string;
+  caption?: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
+      <p className="text-sm text-[var(--muted)]">{title}</p>
+      <p className="mt-2 text-2xl font-bold">{value}</p>
+      {caption && <p className="mt-2 text-xs text-[var(--muted)]">{caption}</p>}
+    </section>
+  );
+}
+export function Dashboard({ data }: { data: Data }) {
+  return (
+    <div className="mx-auto max-w-7xl p-5 md:p-8">
+      <header className="mb-8 flex justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Overview</h1>
+          <p className="text-[var(--muted)]">Your financial position at a glance.</p>
+        </div>
+        <div className="rounded-xl border bg-white px-3 py-2 text-sm">
+          {data.month}
+        </div>
+      </header>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card
+          title="Cash Available"
+          value={rupiah(data.cashAvailable)}
+          caption="Di akun aktif"
+        />
+          <Card title="Monthly Surplus" value={rupiah(data.surplus)} />
+          <Card title="Bills Remaining" value={rupiah(data.bills.unpaidTotal)} caption={`${data.bills.unpaidCount} unpaid`}/>
+          <Card title="Total Debt" value={rupiah(data.debtTotal)} caption={`${data.debtCount} active`}/>
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card title="Saving Rate" value={`${data.savingRate}%`} />
+        <Card
+          title="Safe-to-Spend"
+          value={rupiah(data.safe)}
+          caption={
+            data.days
+              ? `${rupiah(data.dailySafe)} per hari · ${data.days} hari`
+              : "Buat payday plan untuk perhitungan harian"
+          }
+        />
+        <Card
+          title="Financial Status"
+          value={data.status.label}
+          caption="Dihitung dari cash flow dan dana fleksibel"
+        />
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <Chart title="Monthly Cash Flow">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={data.cashFlow}>
+              <XAxis dataKey="month" />
+              <Tooltip formatter={(v) => rupiah(Number(v))} />
+              <Bar dataKey="income" fill="#15803d" />
+              <Bar dataKey="expenses" fill="#cbd5e1" />
+            </BarChart>
+          </ResponsiveContainer>
+        </Chart>
+        <Chart title="Net Worth">
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={data.netWorth}>
+              <XAxis dataKey="month" />
+              <Tooltip formatter={(v) => rupiah(Number(v))} />
+              <Area dataKey="value" stroke="#15803d" fill="#dcfce7" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Chart>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">Tagihan mendatang</h2>
+          {data.billsList.length ? (
+            data.billsList.map((b) => (
+              <div key={b.id} className="mt-3 flex justify-between text-sm">
+                <span>
+                  {b.name}
+                  <small className="block text-slate-500">
+                    {b.status} · {b.dueDate}
+                  </small>
+                </span>
+                <strong>{rupiah(b.amount)}</strong>
+              </div>
+            ))
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              Belum ada tagihan belum dibayar.
+            </p>
+          )}
+        </section>
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">Budget allocation</h2>
+          {data.budget.length ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={data.budget}
+                  dataKey="value"
+                  innerRadius={45}
+                  outerRadius={70}
+                >
+                  {data.budget.map((x, i) => (
+                    <Cell key={x.name} fill={colors[i % colors.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(v) => rupiah(Number(v))} />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              Belum ada alokasi budget bulan ini.
+            </p>
+          )}
+        </section>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">Payday plan</h2>
+          {data.allocations.length ? (
+            data.allocations.map((a) => (
+              <p key={a.id} className="mt-3 flex justify-between text-sm">
+                <span className="flex gap-2">
+                  <CheckCircle2
+                    size={17}
+                    className={
+                      a.isCompleted ? "text-emerald-600" : "text-slate-300"
+                    }
+                  />
+                  {a.name}
+                </span>
+                <strong>{rupiah(a.amount)}</strong>
+              </p>
+            ))
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              Belum ada payday plan.
+            </p>
+          )}
+        </section>
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">CFO Notes</h2>
+          {data.notes.length ? (
+            <ul className="mt-4 space-y-3 text-sm">
+              {data.notes.map((n) => (
+                <li key={n.id}>• {n.content}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">Belum ada CFO notes.</p>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+function Chart({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border bg-white p-5">
+      <h2 className="font-semibold">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
