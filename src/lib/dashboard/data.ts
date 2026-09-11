@@ -1,28 +1,127 @@
 import { and, desc, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
-import { billPayments, bills, budgets, cfoNotes, debts, expenses, financeAccounts, goals, income, monthlySnapshots, paydayAllocations, paydayPlans } from "@/db/schema";
-import { calculateDailySafeToSpend, calculateMonthlySurplus, calculateSafeToSpend, calculateSavingRate, financialStatus } from "@/lib/finance/calculations";
-const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
-const month = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit" }).format(new Date());
-const monthStart = `${month}-01`;
-const [year, monthNumber] = month.split("-").map(Number);
-const nextMonthStart = `${monthNumber === 12 ? year + 1 : year}-${String(monthNumber === 12 ? 1 : monthNumber + 1).padStart(2, "0")}-01`;
+import {
+  billPayments,
+  bills,
+  cfoNotes,
+  financeAccounts,
+  monthlySnapshots,
+} from "@/db/schema";
+import {
+  allocationLabels,
+  calculateSafeToSpend,
+  financialStatus,
+} from "@/lib/finance/calculations";
+import { billDueDate, currentMonth, formatDate } from "@/lib/dates";
+import { getMonthlyReport } from "@/lib/reports/monthly-report";
+import { requireAuth } from "@/lib/auth/require-auth";
 export async function getDashboardData() {
-  const [accounts, payments, activeBills, activeDebts, currentIncome, currentExpenses, currentBudget, snapshots, plans, notes, goalRows] = await Promise.all([
-    db.select().from(financeAccounts).where(eq(financeAccounts.isActive, true)), db.select().from(billPayments).where(and(gte(billPayments.billingMonth, monthStart), lt(billPayments.billingMonth, nextMonthStart))), db.select().from(bills).where(eq(bills.isActive, true)), db.select().from(debts).where(eq(debts.status, "active")), db.select().from(income).where(and(gte(income.receivedAt, monthStart), lt(income.receivedAt, nextMonthStart))), db.select().from(expenses).where(and(gte(expenses.spentAt, monthStart), lt(expenses.spentAt, nextMonthStart))), db.select().from(budgets).where(and(gte(budgets.month, monthStart), lt(budgets.month, nextMonthStart))), db.select().from(monthlySnapshots).orderBy(desc(monthlySnapshots.month)).limit(6), db.select().from(paydayPlans).orderBy(desc(paydayPlans.payday)).limit(1), db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt)).limit(4), db.select().from(goals).orderBy(desc(goals.priority)).limit(3),
-  ]);
-  const cashAvailable = sum(accounts.filter(a => ["bank", "cash", "e_wallet"].includes(a.type)).map(a => a.balance));
-  const paidBillIds = new Set(payments.filter(p => p.status === "paid").map(p => p.billId));
-  const unpaid = activeBills.filter(b => !paidBillIds.has(b.id));
-  const unpaidTotal = sum(unpaid.map(p => p.amount));
-  const monthlyIncome = sum(currentIncome.map(row => row.amount));
-  const monthlyOutflow = sum(currentExpenses.map(row => row.amount)) + sum(payments.filter(p => p.status === "paid").map(p => p.amount));
-  const surplus = calculateMonthlySurplus(monthlyIncome, monthlyOutflow);
-  const savings = sum(currentBudget.filter(b => b.category === "savings").map(b => b.allocatedAmount));
-  const plan = plans[0]; const allocations = plan ? await db.select().from(paydayAllocations).where(eq(paydayAllocations.paydayPlanId, plan.id)) : [];
-  const allocation = (category: string) => sum(allocations.filter(a => a.category === category).map(a => a.amount));
-  const next = plan ? new Date(`${plan.nextPayday}T00:00:00+07:00`) : null; const days = next ? Math.max(0, Math.ceil((next.getTime() - Date.now()) / 86400000)) : 0;
-  const safeInput = { cash: cashAvailable, unpaidBills: unpaidTotal, debtPayments: allocation("debt"), essentials: Math.max(0, allocation("essential") - sum(currentExpenses.filter(e => e.category === "essential").map(e => e.amount))), savings: allocation("savings"), investments: allocation("investments"), buffer: plan?.emergencyBuffer ?? 0, days };
-  const safe = calculateSafeToSpend(safeInput);
-  return { month, cashAvailable, bills: { unpaidTotal, unpaidCount: unpaid.length }, debtTotal: sum(activeDebts.filter(d=>d.remainingAmount>0).map(d => d.remainingAmount)), debtCount: activeDebts.filter(d=>d.remainingAmount>0).length, surplus, savingRate: calculateSavingRate(savings, monthlyIncome), safe, dailySafe: calculateDailySafeToSpend(safeInput), days, status: financialStatus(surplus, safe), cashFlow: [{ month, income: monthlyIncome, expenses: monthlyOutflow }], netWorth: snapshots.reverse().map(s => ({ month: s.month.slice(0, 7), value: s.netWorth })), budget: currentBudget.map(b => ({ name: b.category, value: b.allocatedAmount })), billsList: unpaid.slice(0, 5).map(b => ({ ...b, dueDate: `Day ${b.dueDay}`, status:"unpaid" })), debts: activeDebts.filter(d=>d.remainingAmount>0).slice(0, 5), allocations, notes, goals: goalRows };
+  await requireAuth();
+  const now = new Date();
+  const { month, start, next } = currentMonth(now);
+  const [report, accounts, payments, activeBills, snapshots, notes] =
+    await Promise.all([
+      getMonthlyReport(now),
+      db
+        .select()
+        .from(financeAccounts)
+        .where(eq(financeAccounts.isActive, true)),
+      db
+        .select()
+        .from(billPayments)
+        .where(
+          and(
+            gte(billPayments.billingMonth, start),
+            lt(billPayments.billingMonth, next),
+          ),
+        ),
+      db.select().from(bills).where(eq(bills.isActive, true)),
+      db
+        .select()
+        .from(monthlySnapshots)
+        .orderBy(desc(monthlySnapshots.month))
+        .limit(6),
+      db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt)).limit(4),
+    ]);
+  const liquid = accounts.filter((a) =>
+    ["bank", "cash", "e_wallet"].includes(a.type),
+  );
+  const cashAvailable = liquid.reduce((n, a) => n + a.balance, 0);
+  const paidIds = new Set(
+    payments.filter((p) => p.status === "paid").map((p) => p.billId),
+  );
+  const unpaid = activeBills
+    .filter((b) => !paidIds.has(b.id))
+    .sort((a, b) => a.dueDay - b.dueDay);
+  const unpaidTotal = unpaid.reduce((n, b) => n + Math.max(0, b.amount), 0);
+  const allocated = Object.values(report.allocations).reduce(
+    (a, b) => a + b,
+    0,
+  );
+  const budget = Object.entries(report.allocations).map(([key, value]) => ({
+    name: Object.hasOwn(allocationLabels, key) ? allocationLabels[key] : key,
+    value,
+  }));
+  const remainingInstallments = report.activeDebts.reduce(
+    (n, d) =>
+      n +
+      Math.max(
+        0,
+        Math.min(
+          d.remainingAmount,
+          d.installmentAmount -
+            report.debtPayments
+              .filter((p) => p.debtId === d.id)
+              .reduce((paid, p) => paid + p.amount, 0),
+        ),
+      ),
+    0,
+  );
+  const safe = calculateSafeToSpend({
+    cash: cashAvailable,
+    unpaidBills: unpaidTotal,
+    debtPayments: remainingInstallments,
+    essentials: Math.max(
+      0,
+      (report.allocations.living ?? 0) -
+        report.categories
+          .filter(([category]) => ["living", "essential"].includes(category))
+          .reduce((n, [, amount]) => n + amount, 0),
+    ),
+    savings: report.allocations.savings ?? 0,
+    investments: report.allocations.investments ?? 0,
+    buffer: report.allocations.buffer ?? 0,
+    days: 0,
+  });
+  return {
+    month,
+    cashAvailable,
+    hasAccounts: liquid.length > 0,
+    bills: { unpaidTotal, unpaidCount: unpaid.length },
+    debtTotal: report.debtRemaining,
+    debtCount: report.activeDebts.length,
+    surplus: report.net,
+    savingRate: report.savingRate,
+    safe,
+    status: financialStatus(report.net, safe),
+    cashFlow: report.transactionCount
+      ? [{ month, income: report.income, expenses: report.expenses }]
+      : [],
+    netWorth: snapshots
+      .reverse()
+      .map((s) => ({ month: s.month.slice(0, 7), value: s.netWorth })),
+    budget: budget.filter((b) => b.value > 0),
+    billsList: unpaid.slice(0, 5).map((b) => ({
+      ...b,
+      dueDate: formatDate(billDueDate(month, b.dueDay)),
+      status: "unpaid",
+    })),
+    plan: {
+      income: report.income,
+      allocated,
+      remaining: report.income - allocated,
+    },
+    notes,
+    goals: report.goalRows.sort((a, b) => b.priority - a.priority).slice(0, 3),
+  };
 }

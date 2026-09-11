@@ -15,14 +15,22 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { rupiah } from "@/lib/currency";
+import {
+  MutationForm,
+  DeleteConfirmation,
+} from "@/components/ui/mutation-form";
+import { isDebtPaidOff, progressPercent } from "@/lib/finance/calculations";
+import { formatMonth } from "@/lib/dates";
 type Bill = {
   id: string;
   name: string;
   amount: number;
   dueDay: number;
   notes: string | null;
+  isActive: boolean;
 };
 type Debt = {
   id: string;
@@ -30,17 +38,26 @@ type Debt = {
   remainingAmount: number;
   originalAmount: number;
   installmentAmount: number;
+  status: string;
   dueDay: number;
 };
 export function BillsDebtPage({
   bills,
   debts,
+  paidBillIds,
+  paidTotal,
+  month,
 }: {
   bills: Bill[];
   debts: Debt[];
+  paidBillIds: string[];
+  paidTotal: number;
+  month: string;
 }) {
   const [tab, setTab] = useState<"bills" | "debt">("bills");
-  const activeDebts = debts.filter((debt) => debt.remainingAmount > 0);
+  const activeDebts = debts.filter((debt) => !isDebtPaidOff(debt));
+  const unpaid = bills.filter((b) => b.isActive && !paidBillIds.includes(b.id));
+  const remaining = unpaid.reduce((n, b) => n + Math.max(0, b.amount), 0);
   const total = activeDebts.reduce(
     (sum, debt) => sum + debt.remainingAmount,
     0,
@@ -48,7 +65,9 @@ export function BillsDebtPage({
   return (
     <div className="mx-auto max-w-6xl p-5 md:p-8">
       <h1 className="text-3xl font-semibold">Bills & Debt</h1>
-      <p className="mt-2 text-slate-600">Stay ahead of upcoming obligations.</p>
+      <p className="mt-2 text-slate-600">
+        Stay ahead of upcoming obligations. · {formatMonth(month)}
+      </p>
       <div className="mt-6 flex gap-2 border-b">
         <button
           onClick={() => setTab("bills")}
@@ -62,23 +81,20 @@ export function BillsDebtPage({
         >
           Debt
         </button>
-        <EntryDialog type={tab} />
+        <EntryDialog key={tab} type={tab} />
       </div>
       {tab === "bills" ? (
         <section className="mt-6 grid gap-4 md:grid-cols-3">
-          <Stat
-            label="Due This Month"
-            value={bills.reduce((n, b) => n + b.amount, 0)}
-          />
-          <Stat label="Paid This Month" value={0} />
-          <Stat
-            label="Remaining"
-            value={bills.reduce((n, b) => n + b.amount, 0)}
-          />
+          <Stat label="Due This Month" value={remaining + paidTotal} />
+          <Stat label="Paid This Month" value={paidTotal} />
+          <Stat label="Remaining" value={remaining} />
           <div className="md:col-span-3 rounded-2xl border bg-white">
             {bills.length ? (
               bills.map((b) => (
-                <div key={b.id} className="flex justify-between border-b p-5">
+                <div
+                  key={b.id}
+                  className="flex flex-wrap justify-between gap-3 border-b p-5"
+                >
                   <div>
                     <strong>{b.name}</strong>
                     <p className="text-sm text-slate-500">
@@ -88,18 +104,26 @@ export function BillsDebtPage({
                   <div className="text-right">
                     <strong>{rupiah(b.amount)}</strong>
                     <div className="mt-2 flex gap-2">
-                      <form action={markBillPaid}>
-                        <input name="id" type="hidden" value={b.id} />
-                        <button className="text-sm text-emerald-700">
-                          Mark Paid
-                        </button>
-                      </form>
-                      <form action={deleteBill}>
-                        <input name="id" type="hidden" value={b.id} />
-                        <button className="text-sm text-rose-600">
-                          Delete
-                        </button>
-                      </form>
+                      {paidBillIds.includes(b.id) ? (
+                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
+                          Paid
+                        </span>
+                      ) : b.isActive ? (
+                        <MutationForm action={markBillPaid}>
+                          <input name="id" type="hidden" value={b.id} />
+                          <button className="text-sm text-emerald-700">
+                            Mark Paid
+                          </button>
+                        </MutationForm>
+                      ) : (
+                        <span className="text-xs text-slate-500">Inactive</span>
+                      )}
+                      <DeleteConfirmation
+                        id={b.id}
+                        name={b.name}
+                        action={deleteBill}
+                        paymentHistory
+                      />
                     </div>
                   </div>
                 </div>
@@ -125,13 +149,19 @@ export function BillsDebtPage({
             <Stat label="Active Debts" value={activeDebts.length} />
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
+            {!debts.length && (
+              <p className="text-sm text-slate-500">
+                No debts yet. Add a debt to track repayment.
+              </p>
+            )}
             {debts.map((d) => {
-              const isPaidOff = d.remainingAmount <= 0;
+              const isPaidOff = isDebtPaidOff(d);
               const p = isPaidOff
                 ? 100
-                : d.originalAmount
-                  ? Math.round((1 - d.remainingAmount / d.originalAmount) * 100)
-                  : 0;
+                : progressPercent(
+                    d.originalAmount - d.remainingAmount,
+                    d.originalAmount,
+                  );
               return (
                 <article key={d.id} className="rounded-2xl border bg-white p-5">
                   <strong>{d.name}</strong>
@@ -141,7 +171,9 @@ export function BillsDebtPage({
                     </span>
                   )}
                   <p className="mt-4 text-sm text-slate-500">Remaining</p>
-                  <b className="text-2xl">{rupiah(d.remainingAmount)}</b>
+                  <b className="text-2xl">
+                    {rupiah(isPaidOff ? 0 : Math.max(0, d.remainingAmount))}
+                  </b>
                   <p className="mt-2 text-sm">
                     {p}% paid · {rupiah(d.installmentAmount)}/month · Due{" "}
                     {d.dueDay}
@@ -153,12 +185,14 @@ export function BillsDebtPage({
                     />
                   </div>
                   {!isPaidOff && <PaymentDialog debt={d} />}
-                  <form action={deleteDebt}>
-                    <input name="id" type="hidden" value={d.id} />
-                    <button className="mt-3 text-sm text-rose-600">
-                      Delete
-                    </button>
-                  </form>
+                  <div className="mt-3">
+                    <DeleteConfirmation
+                      id={d.id}
+                      name={d.name}
+                      action={deleteDebt}
+                      paymentHistory
+                    />
+                  </div>
                 </article>
               );
             })}
@@ -173,95 +207,133 @@ function EntryDialog({ type }: { type: "bills" | "debt" }) {
   const action = type === "bills" ? createBill : createDebt;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <button
-        onClick={() => setOpen(true)}
-        className="ml-auto mb-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
-      >
-        + Add {type === "bills" ? "Bill" : "Debt"}
-      </button>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="ml-auto mb-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+        >
+          + Add {type === "bills" ? "Bill" : "Debt"}
+        </button>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">
             Add {type === "bills" ? "Bill" : "Debt"}
           </DialogTitle>
         </DialogHeader>
-        <form
-          key={open ? "open" : "closed"}
-          action={async (f) => {
-            await action(f);
-            setOpen(false);
-          }}
-        >
-          <input
-            name="name"
-            placeholder={type === "bills" ? "Bill name" : "Debt name"}
-            className="w-full rounded-lg border p-2"
-            required
-          />
+        <MutationForm action={action} onSuccess={() => setOpen(false)}>
+          <label className="mt-3 block text-sm">
+            {type === "bills" ? "Bill name" : "Debt name"}
+            <input
+              name="name"
+
+              className="w-full rounded-lg border p-2"
+              required
+            />
+          </label>
           {type === "bills" ? (
             <>
-              <input
-                name="amount"
-                type="number"
-                placeholder="Amount"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="dueDay"
-                type="number"
-                placeholder="Due day"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="category"
-                placeholder="Category"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="notes"
-                placeholder="Notes"
-                className="mt-3 w-full rounded-lg border p-2"
-              />
+              <label className="mt-3 block text-sm">
+                Amount
+                <input
+                  name="amount"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max={2147483647}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Due day
+                <input
+                  name="dueDay"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max="31"
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Category
+                <input
+                  name="category"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Notes
+                <input
+                  name="notes"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                />
+              </label>
             </>
           ) : (
             <>
-              <input
-                name="lender"
-                placeholder="Lender"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="originalAmount"
-                type="number"
-                placeholder="Original amount"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="remainingAmount"
-                type="number"
-                placeholder="Remaining amount"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="installmentAmount"
-                type="number"
-                placeholder="Monthly payment"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
-              <input
-                name="dueDay"
-                type="number"
-                placeholder="Due day"
-                className="mt-3 w-full rounded-lg border p-2"
-                required
-              />
+              <label className="mt-3 block text-sm">
+                Lender
+                <input
+                  name="lender"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Original amount
+                <input
+                  name="originalAmount"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max={2147483647}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Remaining amount
+                <input
+                  name="remainingAmount"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max={2147483647}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Monthly payment
+                <input
+                  name="installmentAmount"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max={2147483647}
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                Due day
+                <input
+                  name="dueDay"
+                  type="number"
+
+                  className="mt-3 w-full rounded-lg border p-2"
+                  required
+                  min="1"
+                  max="31"
+                />
+              </label>
             </>
           )}
           <DialogFooter>
@@ -275,7 +347,7 @@ function EntryDialog({ type }: { type: "bills" | "debt" }) {
               Save {type === "bills" ? "Bill" : "Debt"}
             </button>
           </DialogFooter>
-        </form>
+        </MutationForm>
       </DialogContent>
     </Dialog>
   );
@@ -284,12 +356,11 @@ function PaymentDialog({ debt }: { debt: Debt }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <button
-        onClick={() => setOpen(true)}
-        className="mt-4 text-sm text-emerald-700"
-      >
-        Record Payment
-      </button>
+      <DialogTrigger asChild>
+        <button type="button" className="mt-4 text-sm text-emerald-700">
+          Record Payment
+        </button>
+      </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">
@@ -299,22 +370,23 @@ function PaymentDialog({ debt }: { debt: Debt }) {
             {debt.name} · Remaining {rupiah(debt.remainingAmount)}
           </p>
         </DialogHeader>
-        <form
-          key={open ? "open" : "closed"}
-          action={async (f) => {
-            await recordDebtPayment(f);
-            setOpen(false);
-          }}
+        <MutationForm
+          action={recordDebtPayment}
+          onSuccess={() => setOpen(false)}
         >
           <input name="id" type="hidden" value={debt.id} />
-          <input
-            name="amount"
-            type="number"
-            min="1"
-            placeholder="Payment amount"
-            className="w-full rounded-lg border p-2"
-            required
-          />
+          <label className="mt-3 block text-sm">
+            Payment amount
+            <input
+              name="amount"
+              type="number"
+              min="1"
+
+              className="w-full rounded-lg border p-2"
+              required
+              max={2147483647}
+            />
+          </label>
           <DialogFooter>
             <DialogClose
               type="button"
@@ -326,7 +398,7 @@ function PaymentDialog({ debt }: { debt: Debt }) {
               Record Payment
             </button>
           </DialogFooter>
-        </form>
+        </MutationForm>
       </DialogContent>
     </Dialog>
   );

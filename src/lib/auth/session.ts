@@ -13,6 +13,6 @@ export async function createSession(username: string) {
 export async function getSession() {
   const token = (await cookies()).get(cookieName)?.value;
   if (!token) return null;
-  try { const { payload } = await jwtVerify(token, secret()); return payload.authenticated === true && payload.username === process.env.AUTH_USERNAME ? { username: String(payload.username) } : null; } catch { return null; }
+  try { const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"], requiredClaims: ["exp", "iat"] }); return payload.authenticated === true && payload.username === process.env.AUTH_USERNAME ? { username: String(payload.username) } : null; } catch { return null; }
 }
 export async function deleteSession() { (await cookies()).set(cookieName, "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax", path: "/", maxAge: 0 }); }

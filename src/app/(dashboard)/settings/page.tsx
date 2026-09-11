@@ -1,2 +1,10 @@
 import { WorkspaceRoute } from "@/components/dashboard/workspace-route";
-export default function Page() { return <WorkspaceRoute title="CFO Notes" subtitle="Catat tindakan dan pengingat finansial paling penting." section="settings"/>; }
+export default function Page() {
+  return (
+    <WorkspaceRoute
+      title="Settings"
+      subtitle="Private account and financial reminders."
+      section="settings"
+    />
+  );
+}

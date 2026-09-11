@@ -1,8 +1,130 @@
 "use client";
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { createPlannerItem, deletePlannerItem, updatePlannerItem } from "@/actions/planner";
-import { rupiah } from "@/lib/currency";
-type Item={id:string;name:string;detail:string;amount:number};
-const copy:Record<string,{action:string;name:string;detail:string;amount:string;empty:string}>={"cash-flow":{action:"Add Income",name:"Income source",detail:"Notes",amount:"Amount",empty:"No income recorded this month."},bills:{action:"Add Bill",name:"Bill name",detail:"Due date or notes",amount:"Monthly amount",empty:"No bills yet."},budget:{action:"Add allocation",name:"Allocation category",detail:"Plan notes",amount:"Allocated amount",empty:"Start your monthly plan."},goals:{action:"New Goal",name:"Goal name",detail:"Target date",amount:"Current amount",empty:"No financial goals yet."},payday:{action:"Create payday plan",name:"Payday",detail:"Plan notes",amount:"Income amount",empty:"No payday plan yet."},settings:{action:"Add CFO note",name:"Financial note",detail:"Category",amount:"Priority amount",empty:"No notes yet."}};
-export function WorkspacePage({title,subtitle,section="bills",items=[]}:{title:string;subtitle:string;section?:string;items?:Item[]}) { const [editing,setEditing]=useState<Item|null>(null); const c=copy[section]??copy.bills; const action=editing?updatePlannerItem:createPlannerItem; return <div className="mx-auto max-w-6xl p-5 md:p-8"><header className="mb-8 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-semibold text-emerald-700">MyFinance</p><h1 className="mt-1 text-3xl font-bold tracking-tight">{title}</h1><p className="mt-2 text-slate-600">{subtitle}</p></div></header><section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"><h2 className="font-semibold">{editing?`Edit ${title}`:c.action}</h2><form action={async f=>{await action(f);setEditing(null)}} className="mt-4 grid gap-3 md:grid-cols-[1.2fr_1.2fr_1fr_auto]"><input type="hidden" name="id" value={editing?.id??""}/><input type="hidden" name="section" value={section}/><label className="text-xs font-medium text-slate-600">{c.name}<input name="name" defaultValue={editing?.name} key={editing?.id+"n"} required className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"/></label><label className="text-xs font-medium text-slate-600">{c.detail}<input name="detail" defaultValue={editing?.detail} key={editing?.id+"d"} className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"/></label><label className="text-xs font-medium text-slate-600">{c.amount}<input name="amount" type="number" min="0" defaultValue={editing?.amount??""} key={editing?.id+"a"} required className="mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"/></label><button className="self-end rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white">{editing?"Save changes":c.action}</button></form></section><section className="mt-6 rounded-2xl border border-slate-200/80 bg-white shadow-sm"><div className="border-b px-5 py-4"><h2 className="font-semibold">Your records</h2></div>{items.length?items.map(i=><div key={i.id} className="flex items-center justify-between gap-4 border-b px-5 py-4 last:border-0"><div><strong className="text-sm">{i.name}</strong><p className="mt-1 text-xs text-slate-500">{i.detail||"No additional details"}</p></div><div className="flex items-center gap-3"><strong className="text-sm">{rupiah(i.amount)}</strong><button onClick={()=>setEditing(i)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><Pencil size={16}/></button><form action={deletePlannerItem}><input type="hidden" name="id" value={i.id}/><input type="hidden" name="section" value={section}/><button className="rounded-lg p-2 text-rose-600 hover:bg-rose-50"><Trash2 size={16}/></button></form></div></div>):<p className="p-10 text-center text-sm text-slate-500">{c.empty}</p>}</section></div>; }
+import {
+  createPlannerItem,
+  deletePlannerItem,
+  updatePlannerItem,
+} from "@/actions/planner";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DeleteConfirmation,
+  MutationForm,
+} from "@/components/ui/mutation-form";
+type Item = { id: string; name: string; detail: string };
+export function WorkspacePage({
+  title,
+  subtitle,
+  items,
+}: {
+  title: string;
+  subtitle: string;
+  items: Item[];
+}) {
+  return (
+    <div className="mx-auto max-w-6xl p-5 md:p-8">
+      <header>
+        <h1 className="text-3xl font-semibold">{title}</h1>
+        <p className="mt-2 text-slate-600">{subtitle}</p>
+      </header>
+      <section className="mt-6 rounded-2xl border bg-white p-5">
+        <div className="flex flex-wrap justify-between gap-3">
+          <h2 className="font-semibold">Financial Notes</h2>
+          <NoteDialog />
+        </div>
+        {items.length ? (
+          items.map((item) => (
+            <div
+              key={item.id}
+              className="mt-4 flex flex-wrap justify-between gap-3 border-t pt-4"
+            >
+              <div className="min-w-0">
+                <p className="break-words text-sm">{item.name}</p>
+                <p className="mt-1 text-xs text-slate-500">{item.detail}</p>
+              </div>
+              <div className="flex gap-3">
+                <NoteDialog item={item} />
+                <DeleteConfirmation
+                  id={item.id}
+                  name={item.name}
+                  action={deletePlannerItem}
+                />
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">
+            No financial notes yet. Keep reminders for your next money decision
+            here.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+function NoteDialog({ item }: { item?: Item }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="text-sm font-semibold text-emerald-700"
+        >
+          {item ? "Edit Note" : "Add Note"}
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {item ? "Edit Financial Note" : "Add Financial Note"}
+          </DialogTitle>
+        </DialogHeader>
+        <MutationForm
+          action={item ? updatePlannerItem : createPlannerItem}
+          onSuccess={() => setOpen(false)}
+        >
+          {item && <input type="hidden" name="id" value={item.id} />}
+          <input type="hidden" name="section" value="settings" />
+          <label className="block text-sm">
+            Financial note
+            <textarea
+              name="name"
+              required
+              maxLength={1000}
+              defaultValue={item?.name ?? ""}
+              className="mt-1 w-full rounded-lg border p-2"
+            />
+          </label>
+          <label className="mt-3 block text-sm">
+            Category
+            <input
+              name="detail"
+              maxLength={120}
+              defaultValue={item?.detail ?? ""}
+              className="mt-1 w-full rounded-lg border p-2"
+            />
+          </label>
+          <DialogFooter>
+            <DialogClose type="button" className="rounded-xl border px-4 py-2">
+              Cancel
+            </DialogClose>
+            <button
+              type="submit"
+              className="rounded-xl bg-emerald-700 px-4 py-2 text-white"
+            >
+              Save Note
+            </button>
+          </DialogFooter>
+        </MutationForm>
+      </DialogContent>
+    </Dialog>
+  );
+}

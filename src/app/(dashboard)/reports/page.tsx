@@ -1,3 +1,98 @@
 import { getMonthlyReport } from "@/lib/reports/monthly-report";
 import { rupiah } from "@/lib/currency";
-export default async function Page(){const r=await getMonthlyReport();const cards=[["Income",r.income],["Expenses",r.expenses],["Net Cash Flow",r.net],["Saving Rate",r.savingRate]];return <div className="mx-auto max-w-6xl p-5 md:p-8"><p className="text-sm font-semibold text-emerald-700">{r.month}</p><h1 className="mt-1 text-3xl font-semibold">Monthly Report</h1><p className="mt-2 text-slate-600">Understand what changed this month.</p><div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{cards.map(([label,value])=><section key={String(label)} className="rounded-2xl border bg-white p-5"><p className="text-sm text-slate-500">{label}</p><strong className="mt-2 block text-2xl">{label==="Saving Rate"?`${value}%`:rupiah(Number(value))}</strong></section>)}</div><div className="mt-6 grid gap-6 lg:grid-cols-2"><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Spending Breakdown</h2>{r.categories.length?<div className="mt-4 space-y-3">{r.categories.map(([c,a])=><div key={c} className="flex justify-between text-sm"><span>{c}</span><strong>{rupiah(a)}</strong></div>)}</div>:<p className="mt-4 text-sm text-slate-500">No expense data yet. Record expenses in Cash Flow to see spending analysis.</p>}</section><section className="rounded-2xl border bg-white p-5"><h2 className="font-semibold">Debt & Goals</h2><div className="mt-4 grid grid-cols-2 gap-4 text-sm"><p>Debt paid<br/><strong>{rupiah(r.debtPaid)}</strong></p><p>Remaining debt<br/><strong>{rupiah(r.debtRemaining)}</strong></p><p>Active goals<br/><strong>{r.activeGoals}</strong></p><p>Completed goals<br/><strong>{r.completedGoals}</strong></p></div></section></div><section className="mt-6 rounded-2xl border bg-white p-5"><h2 className="font-semibold">Financial Insight</h2><p className="mt-3 text-sm text-slate-600">{r.income===0?"Record income in Cash Flow to unlock a complete monthly report.":r.net>=0?"Your cash flow is positive this month.":"Your expenses exceed income this month."}</p></section></div>}
+import { formatMonth } from "@/lib/dates";
+export default async function Page() {
+  const r = await getMonthlyReport();
+  const cards = [
+    ["Income", r.income],
+    ["Expenses", r.expenses],
+    ["Net Cash Flow", r.net],
+    ["Planned Saving Rate", r.savingRate],
+  ];
+  return (
+    <div className="mx-auto max-w-6xl p-5 md:p-8">
+      <p className="text-sm font-semibold text-emerald-700">
+        {formatMonth(r.month)}
+      </p>
+      <h1 className="mt-1 text-3xl font-semibold">Monthly Report</h1>
+      <p className="mt-2 text-slate-600">Understand what changed this month.</p>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map(([label, value]) => (
+          <section
+            key={String(label)}
+            className="rounded-2xl border bg-white p-5"
+          >
+            <p className="text-sm text-slate-500">{label}</p>
+            <strong className="mt-2 block text-2xl">
+              {label === "Planned Saving Rate"
+                ? `${value}%`
+                : rupiah(Number(value))}
+            </strong>
+          </section>
+        ))}
+      </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">Spending Breakdown</h2>
+          {r.categories.length ? (
+            <div className="mt-4 space-y-3">
+              {r.categories.map(([c, a]) => (
+                <div key={c} className="flex justify-between text-sm">
+                  <span>{c}</span>
+                  <strong>{rupiah(a)}</strong>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              No expense data yet. Record expenses in Cash Flow to see spending
+              analysis.
+            </p>
+          )}
+        </section>
+        <section className="rounded-2xl border bg-white p-5">
+          <h2 className="font-semibold">Debt & Goals</h2>
+          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+            <p>
+              Debt paid
+              <br />
+              <strong>{rupiah(r.debtPaid)}</strong>
+            </p>
+            <p>
+              Remaining debt
+              <br />
+              <strong>{rupiah(r.debtRemaining)}</strong>
+            </p>
+            <p>
+              Active goals
+              <br />
+              <strong>{r.activeGoals}</strong>
+            </p>
+            <p>
+              Completed goals
+              <br />
+              <strong>{r.completedGoals}</strong>
+            </p>
+          </div>
+        </section>
+      </div>
+      <p className="mt-4 text-xs text-slate-500">
+        Planned saving rate uses this month’s savings allocation, not confirmed
+        transfers. Expenses are recorded Cash Flow expenses; bill and debt
+        payments are reported separately.
+      </p>
+      <section className="mt-6 rounded-2xl border bg-white p-5">
+        <h2 className="font-semibold">Financial Insight</h2>
+        <p className="mt-3 text-sm text-slate-600">
+          {r.income === 0
+            ? "Record income in Cash Flow to unlock a complete monthly report."
+            : r.net === 0
+              ? "Your income and expenses balance this month."
+              : r.net > 0
+                ? "Your cash flow is positive this month."
+                : "Your expenses exceed income this month."}
+        </p>
+      </section>
+    </div>
+  );
+}

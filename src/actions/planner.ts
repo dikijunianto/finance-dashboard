@@ -1,14 +1,69 @@
 "use server";
-import { desc, eq } from "drizzle-orm";
+// Compatibility names for the existing Settings notes UI only.
+// Finance domains must use their explicit domain actions.
+import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { bills, budgets, cfoNotes, goals, income, paydayPlans, user } from "@/db/schema";
+import { cfoNotes } from "@/db/schema";
+import { InputError, mutationResult, requireOwner } from "@/lib/action-result";
 import { requireAuth } from "@/lib/auth/require-auth";
-const input = z.object({ section: z.enum(["cash-flow", "bills", "budget", "goals", "payday", "settings"]), name: z.string().trim().min(1).max(120), detail: z.string().trim().max(240), amount: z.coerce.number().int().min(0).max(2_147_483_647) });
-const today = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
-async function owner() { const email = "local@myfinance.private"; const existing = await db.select().from(user).where(eq(user.email, email)).limit(1); if (existing[0]) return existing[0].id; const [created] = await db.insert(user).values({ email, name: "MyFinance owner", emailVerified: true }).returning(); return created.id; }
-export async function listPlannerItems(section: string) { await requireAuth(); if (section === "cash-flow") return (await db.select().from(income).orderBy(desc(income.receivedAt))).map(x => ({ id:x.id, name:x.source, detail:x.notes ?? x.receivedAt, amount:x.amount })); if (section === "bills") return (await db.select().from(bills).orderBy(desc(bills.createdAt))).map(x => ({ id:x.id, name:x.name, detail:x.notes ?? `Jatuh tempo ${x.dueDay}`, amount:x.amount })); if (section === "budget") return (await db.select().from(budgets).orderBy(desc(budgets.createdAt))).map(x => ({ id:x.id, name:x.category, detail:x.month, amount:x.allocatedAmount })); if (section === "goals") return (await db.select().from(goals).orderBy(desc(goals.createdAt))).map(x => ({ id:x.id, name:x.name, detail:x.targetDate ?? x.status, amount:x.currentAmount })); if (section === "payday") return (await db.select().from(paydayPlans).orderBy(desc(paydayPlans.payday))).map(x => ({ id:x.id, name:`Payday ${x.payday}`, detail:x.notes ?? x.status, amount:x.incomeAmount })); if (section === "settings") return (await db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt))).map(x => ({ id:x.id, name:x.content, detail:x.category, amount:0 })); return []; }
-export async function createPlannerItem(formData: FormData) { await requireAuth(); const data = input.parse(Object.fromEntries(formData)); const userId = await owner(); if (data.section === "cash-flow") await db.insert(income).values({ userId, source:data.name, amount:data.amount, receivedAt:today(), notes:data.detail }); else if (data.section === "bills") await db.insert(bills).values({ userId, name:data.name, category:"other", amount:data.amount, dueDay:1, frequency:"monthly", notes:data.detail }); else if (data.section === "budget") await db.insert(budgets).values({ userId, month:today().slice(0,7)+"-01", category:data.name, allocatedAmount:data.amount }); else if (data.section === "goals") await db.insert(goals).values({ userId, name:data.name, goalType:"other", targetAmount:data.amount, currentAmount:0, targetDate:null }); else if (data.section === "payday") await db.insert(paydayPlans).values({ userId, payday:today(), incomeAmount:data.amount, availableBalance:0, nextPayday:today(), emergencyBuffer:0, notes:data.detail }); else if (data.section === "settings") await db.insert(cfoNotes).values({ userId, month:today().slice(0,7)+"-01", content:data.name, category:data.detail || "general" }); revalidatePath(`/${data.section}`); revalidatePath("/dashboard"); }
-export async function updatePlannerItem(formData: FormData) { await requireAuth(); const id = z.string().uuid().parse(formData.get("id")); const data = input.parse(Object.fromEntries(formData)); if (data.section === "cash-flow") await db.update(income).set({ source:data.name, amount:data.amount, notes:data.detail }).where(eq(income.id,id)); else if (data.section === "bills") await db.update(bills).set({ name:data.name, amount:data.amount, notes:data.detail }).where(eq(bills.id,id)); else if (data.section === "budget") await db.update(budgets).set({ category:data.name, allocatedAmount:data.amount }).where(eq(budgets.id,id)); else if (data.section === "goals") await db.update(goals).set({ name:data.name, currentAmount:data.amount }).where(eq(goals.id,id)); else if (data.section === "settings") await db.update(cfoNotes).set({ content:data.name, category:data.detail || "general" }).where(eq(cfoNotes.id,id)); revalidatePath(`/${data.section}`); revalidatePath("/dashboard"); }
-export async function deletePlannerItem(formData: FormData) { await requireAuth(); const id = z.string().uuid().parse(formData.get("id")); const section = z.string().parse(formData.get("section")); if (section === "cash-flow") await db.delete(income).where(eq(income.id,id)); else if (section === "bills") await db.delete(bills).where(eq(bills.id,id)); else if (section === "budget") await db.delete(budgets).where(eq(budgets.id,id)); else if (section === "goals") await db.delete(goals).where(eq(goals.id,id)); else if (section === "payday") await db.delete(paydayPlans).where(eq(paydayPlans.id,id)); else if (section === "settings") await db.delete(cfoNotes).where(eq(cfoNotes.id,id)); revalidatePath(`/${section}`); revalidatePath("/dashboard"); }
+import { currentMonth } from "@/lib/dates";
+const input = z.object({
+  section: z.literal("settings"),
+  name: z.string().trim().min(1).max(1000),
+  detail: z.string().trim().max(120),
+});
+function done() {
+  revalidatePath("/settings");
+  revalidatePath("/dashboard");
+}
+export async function listPlannerItems(section: string) {
+  await requireAuth();
+  z.literal("settings").parse(section);
+  return (
+    await db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt))
+  ).map((x) => ({ id: x.id, name: x.content, detail: x.category }));
+}
+export async function createPlannerItem(f: FormData) {
+  return mutationResult(async () => {
+    const d = input.parse(Object.fromEntries(f));
+    await db
+      .insert(cfoNotes)
+      .values({
+        userId: await requireOwner(),
+        month: currentMonth().start,
+        content: d.name,
+        category: d.detail || "general",
+      });
+    done();
+  });
+}
+export async function updatePlannerItem(f: FormData) {
+  return mutationResult(async () => {
+    const id = z.string().uuid().parse(f.get("id"));
+    const d = input.parse(Object.fromEntries(f));
+    const userId = await requireOwner();
+    const rows = await db
+      .update(cfoNotes)
+      .set({ content: d.name, category: d.detail || "general" })
+      .where(and(eq(cfoNotes.id, id), eq(cfoNotes.userId, userId)))
+      .returning({ id: cfoNotes.id });
+    if (!rows.length)
+      throw new InputError("Note no longer exists. Refresh the page.");
+    done();
+  });
+}
+export async function deletePlannerItem(f: FormData) {
+  return mutationResult(async () => {
+    const id = z.string().uuid().parse(f.get("id"));
+    const userId = await requireOwner();
+    const rows = await db
+      .delete(cfoNotes)
+      .where(and(eq(cfoNotes.id, id), eq(cfoNotes.userId, userId)))
+      .returning({ id: cfoNotes.id });
+    if (!rows.length)
+      throw new InputError("Note no longer exists. Refresh the page.");
+    done();
+  });
+}

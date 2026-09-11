@@ -1,2 +1,6 @@
-import { WorkspaceRoute } from "@/components/dashboard/workspace-route";
-export default function Page() { return <WorkspaceRoute title="Payday Plan" subtitle="Buat keputusan alokasi pada hari gajian." section="payday"/>; }
+import { redirect } from "next/navigation";
+import { requireAuth } from "@/lib/auth/require-auth";
+export default async function Page() {
+  await requireAuth();
+  redirect("/budget");
+}
