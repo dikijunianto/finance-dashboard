@@ -1,2 +1,5 @@
-import { WorkspaceRoute } from "@/components/dashboard/workspace-route";
-export default function Page() { return <WorkspaceRoute title="Financial Goals" subtitle="Sasaran yang diberi prioritas dan dilacak progresnya." section="goals"/>; }
+import { desc } from "drizzle-orm";
+import { db } from "@/db";
+import { goals } from "@/db/schema";
+import { GoalsPage } from "@/components/goals/goals-page";
+export default async function Page(){return <GoalsPage goals={await db.select().from(goals).orderBy(desc(goals.createdAt))}/>}
