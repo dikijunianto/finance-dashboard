@@ -65,6 +65,7 @@ const bills = await import("../src/actions/bills-debt.ts");
 const goals = await import("../src/actions/goals.ts");
 const plan = await import("../src/actions/plan.ts");
 const notes = await import("../src/actions/planner.ts");
+const accounts = await import("../src/actions/accounts.ts");
 const session = await import("../src/lib/auth/session.ts");
 const { currentMonth, jakartaDate } = await import("../src/lib/dates.ts");
 const { getMonthlyReport } =
@@ -84,6 +85,7 @@ try {
     ...Object.values(cash),
     ...Object.values(bills),
     ...Object.values(goals),
+    ...Object.values(accounts),
     plan.updateMonthlyPlan,
     notes.createPlannerItem,
     notes.updatePlannerItem,
@@ -395,6 +397,160 @@ try {
     [goals.deleteGoal, goal.id],
   ])
     assert.equal((await action(form({ id }))).success, true);
+  const accountIds = [];
+  const beforeCash = (await getDashboardData()).cashAvailable;
+  let addedLiquid = 0;
+  for (const type of ["bank", "cash", "e_wallet", "investment", "other"]) {
+    assert.equal(
+      (
+        await accounts.createAccount(
+          form({
+            name: prefix + " account " + type,
+            type,
+            balance: 100,
+            institution: "QA",
+          }),
+        )
+      ).success,
+      true,
+    );
+    const [row] =
+      await sql`select * from finance_accounts where name=${prefix + " account " + type}`;
+    accountIds.push(row.id);
+    assert.equal(row.balance, 100);
+    if (["bank", "cash", "e_wallet"].includes(type)) addedLiquid += 100;
+    assert.equal(
+      (await getDashboardData()).cashAvailable,
+      beforeCash + addedLiquid,
+    );
+  }
+  const bankId = accountIds[0];
+  assert.equal(
+    (
+      await accounts.updateAccountBalance(
+        form({ id: bankId, balance: 7500000, name: "ignored" }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(
+    (
+      await accounts.updateAccount(
+        form({
+          id: bankId,
+          name: prefix + " account bank",
+          type: "bank",
+          institution: "Updated",
+          isActive: "true",
+          balance: 0,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(
+    (await sql`select balance from finance_accounts where id=${bankId}`)[0]
+      .balance,
+    7500000,
+    "Metadata edits cannot overwrite balance",
+  );
+  for (const value of ["", "1.5", "2147483648", "-2147483649", "not-money"])
+    assert.equal(
+      (
+        await accounts.updateAccountBalance(
+          form({ id: bankId, balance: value }),
+        )
+      ).success,
+      false,
+    );
+  assert.equal(
+    (
+      await accounts.createAccount(
+        form({ name: " ", type: "bank", balance: 0 }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(
+    (
+      await accounts.createAccount(
+        form({ name: "QA", type: "unsupported", balance: 0 }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(
+    (await accounts.updateAccountBalance(form({ id: bankId, balance: -100 })))
+      .success,
+    true,
+  );
+  assert.equal(
+    (await getDashboardData()).cashAvailable,
+    beforeCash + 100,
+    "Signed overdraft balances are not clamped away",
+  );
+  assert.equal(
+    (await accounts.deactivateAccount(form({ id: bankId }))).success,
+    true,
+  );
+  assert.equal(
+    (await sql`select is_active from finance_accounts where id=${bankId}`)[0]
+      .is_active,
+    false,
+  );
+  assert.equal((await getDashboardData()).cashAvailable, beforeCash + 200);
+  assert.equal(
+    (
+      await accounts.updateAccount(
+        form({
+          id: bankId,
+          name: prefix + " account bank",
+          type: "bank",
+          institution: "",
+          isActive: "true",
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal((await getDashboardData()).cashAvailable, beforeCash + 100);
+  const [foreignUser] =
+    await sql`insert into "user"(email) values(${prefix + "@qa.local"}) returning id`;
+  const [foreign] =
+    await sql`insert into finance_accounts(user_id,name,type,balance) values(${foreignUser.id},'Foreign QA','bank',1) returning id`;
+  for (const action of [
+    accounts.updateAccount,
+    accounts.updateAccountBalance,
+    accounts.deactivateAccount,
+  ])
+    assert.equal(
+      (
+        await action(
+          form({
+            id: foreign.id,
+            name: "Unauthorized",
+            type: "bank",
+            institution: "",
+            isActive: "false",
+            balance: 0,
+          }),
+        )
+      ).success,
+      false,
+    );
+  assert.equal(
+    (await sql`select balance from finance_accounts where id=${foreign.id}`)[0]
+      .balance,
+    1,
+  );
+  await sql`delete from finance_accounts where id=${foreign.id}`;
+  await sql`delete from "user" where id=${foreignUser.id}`;
+  assert(globalThis.qaPaths.includes("/accounts"));
+  for (const id of accountIds)
+    await sql`delete from finance_accounts where id=${id}`;
+  console.log(
+    "PASS Accounts actions: all types, balances, metadata preservation, validation, deactivate/reactivate, ownership, shared Overview totals.",
+  );
   const { db } = await import("../src/db/index.ts");
   await db.$client.end();
   assert.equal(

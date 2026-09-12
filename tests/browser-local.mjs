@@ -64,7 +64,7 @@ const save = async (name) => {
 };
 const rowCounts = async () =>
   (
-    await sql`select (select count(*) from income)::int income,(select count(*) from expenses)::int expenses,(select count(*) from bills)::int bills,(select count(*) from bill_payments)::int bill_payments,(select count(*) from debts)::int debts,(select count(*) from debt_payments)::int debt_payments,(select count(*) from financial_goals)::int goals,(select count(*) from budgets)::int budgets,(select count(*) from cfo_notes)::int notes`
+    await sql`select (select count(*) from finance_accounts)::int accounts,(select count(*) from income)::int income,(select count(*) from expenses)::int expenses,(select count(*) from bills)::int bills,(select count(*) from bill_payments)::int bill_payments,(select count(*) from debts)::int debts,(select count(*) from debt_payments)::int debt_payments,(select count(*) from financial_goals)::int goals,(select count(*) from budgets)::int budgets,(select count(*) from cfo_notes)::int notes`
   )[0];
 async function closeChecks(trigger, label) {
   const before = await rowCounts();
@@ -111,6 +111,7 @@ async function closeChecks(trigger, label) {
 try {
   for (const route of [
     "/dashboard",
+    "/accounts",
     "/cash-flow",
     "/bills",
     "/budget",
@@ -141,6 +142,161 @@ try {
   assert(
     cookie?.httpOnly && cookie.sameSite === "Lax" && cookie.secure,
     "Production cookie flags",
+  );
+
+  await page.getByRole("link", { name: "Add Account", exact: true }).click();
+  await page.waitForURL(base + "/accounts");
+  assert.deepEqual(
+    await page
+      .getByRole("navigation", { name: "Primary navigation", exact: true })
+      .getByRole("link")
+      .allTextContents(),
+    [
+      "Overview",
+      "Accounts",
+      "Cash Flow",
+      "Bills & Debt",
+      "Plan",
+      "Goals",
+      "Reports",
+    ],
+  );
+  await closeChecks(button("+ Add Account").first(), "Account Name");
+  let expectedCash = 0;
+  for (const [type, amount] of [
+    ["bank", 7500000],
+    ["cash", 500000],
+    ["e_wallet", 300000],
+    ["investment", 2000000],
+    ["other", 100000],
+  ]) {
+    await button("+ Add Account").first().click();
+    await fill({ "Account Name": " ", "Current Balance": amount });
+    await dialog().getByRole("combobox", { name: /^Type/ }).selectOption(type);
+    await dialog()
+      .getByRole("button", { name: "Add Account", exact: true })
+      .click();
+    await dialog().getByRole("alert").waitFor();
+    assert.equal(
+      await dialog()
+        .getByLabel("Current Balance", { exact: true })
+        .inputValue(),
+      String(amount),
+    );
+    await fill({ "Account Name": prefix + " account " + type });
+    await save("Add Account");
+    await page.reload();
+    await page
+      .getByRole("heading", { name: prefix + " account " + type, exact: true })
+      .waitFor();
+    assert.equal(
+      (
+        await sql`select balance from finance_accounts where name=${prefix + " account " + type}`
+      )[0].balance,
+      amount,
+    );
+    if (["bank", "cash", "e_wallet"].includes(type)) expectedCash += amount;
+    await page
+      .getByRole("navigation", { name: "Primary navigation", exact: true })
+      .getByRole("link", { name: "Overview", exact: true })
+      .click();
+    await page
+      .getByRole("link", { name: "Manage Accounts", exact: true })
+      .waitFor();
+    assert(
+      (
+        await page
+          .locator("section")
+          .filter({ has: page.getByText("Cash Available", { exact: true }) })
+          .first()
+          .innerText()
+      ).includes(rupiah(expectedCash)),
+    );
+    await go("/accounts");
+  }
+  const bankCard = page
+    .getByRole("article")
+    .filter({
+      has: page.getByRole("heading", {
+        name: prefix + " account bank",
+        exact: true,
+      }),
+    });
+  const readBank = async () =>
+    (
+      await sql`select * from finance_accounts where name=${prefix + " account bank"}`
+    )[0];
+  await closeChecks(
+    bankCard.getByRole("button", { name: "Edit Balance", exact: true }),
+    "New Balance",
+  );
+  assert.equal((await readBank()).balance, 7500000);
+  await bankCard
+    .getByRole("button", { name: "Edit Balance", exact: true })
+    .click();
+  await fill({ "New Balance": 8000000 });
+  await save("Update Balance");
+  await page.reload();
+  await bankCard.waitFor();
+  assert.equal((await readBank()).balance, 8000000);
+  await closeChecks(
+    bankCard.getByRole("button", { name: "Edit", exact: true }),
+    "Account Name",
+  );
+  await bankCard.getByRole("button", { name: "Edit", exact: true }).click();
+  assert.equal(await dialog().locator('input[name="balance"]').count(), 0);
+  await fill({ "Institution (optional)": "Updated QA bank" });
+  await save("Save Changes");
+  assert.equal((await readBank()).balance, 8000000);
+  assert.equal((await readBank()).institution, "Updated QA bank");
+  await go("/dashboard");
+  assert(
+    (
+      await page
+        .locator("section")
+        .filter({ has: page.getByText("Cash Available", { exact: true }) })
+        .first()
+        .innerText()
+    ).includes(rupiah(8800000)),
+  );
+  await go("/accounts");
+  await bankCard
+    .getByRole("button", { name: "Deactivate", exact: true })
+    .click();
+  await bankCard.getByText("Inactive", { exact: true }).waitFor();
+  assert.equal((await readBank()).is_active, false);
+  await page.reload();
+  await bankCard.getByText("Inactive", { exact: true }).waitFor();
+  await go("/dashboard");
+  assert(
+    (
+      await page
+        .locator("section")
+        .filter({ has: page.getByText("Cash Available", { exact: true }) })
+        .first()
+        .innerText()
+    ).includes(rupiah(800000)),
+  );
+  await go("/accounts");
+  await bankCard.getByRole("button", { name: "Edit", exact: true }).click();
+  await dialog().getByRole("combobox", { name: /^Status/ }).selectOption("true");
+  await save("Save Changes");
+  assert.equal((await readBank()).is_active, true);
+  for (const width of [1440, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    );
+    await page.screenshot({
+      path: join(snapshots, "accounts-" + width + ".png"),
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  console.log(
+    "PASS browser: Accounts five types, failed save, dialog closing/reset, persisted balances/metadata, deactivation/reactivation and Overview liquid totals",
   );
 
   await go("/cash-flow");
@@ -411,6 +567,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     for (const route of [
       "/dashboard",
+      "/accounts",
       "/cash-flow",
       "/bills",
       "/budget",
@@ -551,5 +708,7 @@ try {
   await sql`delete from debts where name=${prefix + " debt"}`;
   await sql`delete from financial_goals where name=${prefix + " goal"}`;
   await sql`delete from cfo_notes where content=${prefix + " note"}`;
+  for (const type of ["bank", "cash", "e_wallet", "investment", "other"])
+    await sql`delete from finance_accounts where name=${prefix + " account " + type}`;
   await sql.end();
 }

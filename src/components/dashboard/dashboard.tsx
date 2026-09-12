@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   Area,
   AreaChart,
@@ -22,16 +23,19 @@ function Card({
   title,
   value,
   caption,
+  children,
 }: {
   title: string;
   value: string;
   caption?: string;
+  children?: React.ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-[var(--line)] bg-white p-5 shadow-sm">
       <p className="text-sm text-[var(--muted)]">{title}</p>
       <p className="mt-2 text-2xl font-bold">{value}</p>
       {caption && <p className="mt-2 text-xs text-[var(--muted)]">{caption}</p>}
+      {children}
     </section>
   );
 }
@@ -58,9 +62,16 @@ export function Dashboard({ data }: { data: Data }) {
           caption={
             data.hasAccounts
               ? "Recorded active account balances"
-              : "No active cash accounts recorded"
+              : "Add an account to track your available balance."
           }
-        />
+        >
+          <Link
+            href="/accounts"
+            className="mt-3 inline-block text-sm font-semibold text-emerald-700"
+          >
+            {data.hasAccounts ? "Manage Accounts" : "Add Account"}
+          </Link>
+        </Card>
         <Card title="Monthly Surplus" value={rupiah(data.surplus)} />
         <Card
           title="Bills Remaining"

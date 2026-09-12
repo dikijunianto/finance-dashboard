@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  Landmark,
   CircleDollarSign,
   CreditCard,
   LayoutDashboard,
@@ -13,6 +14,7 @@ import {
 import { logout } from "@/actions/auth";
 const links = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/accounts", label: "Accounts", icon: Landmark },
   { href: "/cash-flow", label: "Cash Flow", icon: BarChart3 },
   { href: "/bills", label: "Bills & Debt", icon: CreditCard },
   { href: "/budget", label: "Plan", icon: Wallet },

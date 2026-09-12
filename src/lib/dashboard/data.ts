@@ -15,6 +15,7 @@ import {
 import { billDueDate, currentMonth, formatDate } from "@/lib/dates";
 import { getMonthlyReport } from "@/lib/reports/monthly-report";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { isLiquidAccount } from "@/lib/accounts";
 export async function getDashboardData() {
   await requireAuth();
   const now = new Date();
@@ -43,9 +44,7 @@ export async function getDashboardData() {
         .limit(6),
       db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt)).limit(4),
     ]);
-  const liquid = accounts.filter((a) =>
-    ["bank", "cash", "e_wallet"].includes(a.type),
-  );
+  const liquid = accounts.filter(isLiquidAccount);
   const cashAvailable = liquid.reduce((n, a) => n + a.balance, 0);
   const paidIds = new Set(
     payments.filter((p) => p.status === "paid").map((p) => p.billId),
