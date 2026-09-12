@@ -24,8 +24,8 @@ const links = [
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   return (
-    <div className="min-h-screen bg-[#f6f8f6] lg:grid lg:grid-cols-[240px_1fr]">
-      <aside className="hidden min-h-screen border-r border-emerald-950/5 bg-white px-4 py-6 lg:flex lg:flex-col">
+    <div className="min-h-screen bg-[var(--bg)] lg:grid lg:grid-cols-[232px_1fr]">
+      <aside className="sticky top-0 hidden h-screen border-r border-emerald-950/5 bg-white px-4 py-7 lg:flex lg:flex-col">
         <Link href="/dashboard" className="flex items-center gap-3 px-2">
           <span className="grid size-10 place-items-center rounded-xl bg-emerald-700 text-white shadow-sm">
             <CircleDollarSign size={21} />
@@ -35,7 +35,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <small className="text-slate-500">Your Personal CFO</small>
           </span>
         </Link>
-        <nav aria-label="Primary navigation" className="mt-10 space-y-1">
+        <nav aria-label="Primary navigation" className="mt-12 space-y-1.5">
           {links.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}

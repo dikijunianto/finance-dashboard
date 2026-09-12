@@ -14,6 +14,7 @@ import { rupiah } from "@/lib/currency";
 import { allocationLabels as labels } from "@/lib/finance/calculations";
 import { formatMonth } from "@/lib/dates";
 import { MutationForm } from "@/components/ui/mutation-form";
+import { StatusBadge } from "@/components/ui/status-badge";
 export function PlanPage({
   income,
   values,
@@ -34,33 +35,57 @@ export function PlanPage({
         : "Over Allocated";
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="mx-auto max-w-6xl p-5 md:p-8">
+      <div className="page">
         <h1 className="text-3xl font-semibold">Plan</h1>
         <p className="mt-2 text-slate-600">
           Allocate your income before spending it. · {formatMonth(month)}
         </p>
-        <section className="mt-6 rounded-2xl bg-emerald-700 p-6 text-white">
-          <p className="text-sm text-emerald-100">Monthly Income</p>
-          <strong className="mt-2 block text-3xl">{rupiah(income)}</strong>
-          {!income && (
-            <p className="mt-2 text-sm text-emerald-100">
-              Add income in Cash Flow before creating a plan.
+        <div className="mt-6 grid gap-5 lg:grid-cols-2">
+          <section className="panel">
+            <p className="eyebrow">{formatMonth(month)}</p>
+            <p className="mt-4 text-sm text-slate-500">Monthly Income</p>
+            <strong className="mt-2 block money">{rupiah(income)}</strong>
+            {!income && (
+              <p className="mt-2 text-sm text-slate-500">
+                Add income in Cash Flow before creating a plan.
+              </p>
+            )}
+          </section>
+          <section className="panel">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-slate-500">Remaining</p>
+              <StatusBadge
+                tone={
+                  remaining === 0
+                    ? "good"
+                    : remaining > 0
+                      ? "attention"
+                      : "danger"
+                }
+              >
+                {status}
+              </StatusBadge>
+            </div>
+            <p className="mt-3 money">{rupiah(remaining)}</p>
+            <p className="mt-2 text-sm text-slate-500">
+              {remaining > 0
+                ? "Still needs a purpose."
+                : remaining < 0
+                  ? "Your allocation exceeds recorded income."
+                  : "Every recorded Rupiah has a purpose."}
             </p>
-          )}
-        </section>
+          </section>
+        </div>
         <section className="mt-6 rounded-2xl border bg-white p-6">
           <div className="flex justify-between">
             <h2 className="text-lg font-semibold">Monthly Allocation</h2>
             <DialogTrigger asChild>
-              <button
-                type="button"
-                className="text-sm font-semibold text-emerald-700"
-              >
+              <button type="button" className="button-primary">
                 Edit Plan
               </button>
             </DialogTrigger>
           </div>
-          <div className="mt-5 space-y-5">
+          <div className="mt-5 grid gap-6 lg:grid-cols-2 lg:gap-x-10">
             {Object.entries({
               ...Object.fromEntries(
                 Object.keys(values).map((key) => [key, key]),
@@ -71,7 +96,7 @@ export function PlanPage({
               const pct = income ? Math.round((amount / income) * 100) : 0;
               return (
                 <div key={key}>
-                  <div className="flex justify-between text-sm">
+                  <div className="flex flex-wrap justify-between gap-2 text-sm">
                     <span>{label}</span>
                     <strong>
                       {rupiah(amount)} · {pct}%

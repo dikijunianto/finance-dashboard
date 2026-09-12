@@ -17,6 +17,8 @@ import {
 } from "@/components/ui/mutation-form";
 import { isGoalCompleted, progressPercent } from "@/lib/finance/calculations";
 import { formatDate } from "@/lib/dates";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 type Goal = {
   id: string;
   name: string;
@@ -31,8 +33,8 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
   const active = goals.filter((g) => !isGoalCompleted(g));
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <div className="mx-auto max-w-6xl p-5 md:p-8">
-        <header className="flex flex-wrap justify-between gap-3">
+      <div className="page">
+        <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-semibold">Financial Goals</h1>
             <p className="mt-2 text-slate-600">
@@ -69,10 +71,12 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
           ))}
         </div>
         {!goals.length && (
-          <p className="mt-6 rounded-2xl border bg-white p-10 text-center text-slate-500">
-            No financial goals yet. Create a target such as an emergency fund or
-            large purchase.
-          </p>
+          <div className="panel mt-6">
+            <EmptyState
+              title="No goals yet"
+              description="Create a financial target such as an emergency fund or major purchase."
+            />
+          </div>
         )}
         <DialogContent>
           <DialogHeader>
@@ -90,16 +94,18 @@ function GoalCard({ goal }: { goal: Goal }) {
   const p = done ? 100 : progressPercent(goal.currentAmount, goal.targetAmount);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <article className="rounded-2xl border bg-white p-5">
-        <div className="flex justify-between">
-          <strong>{goal.name}</strong>
-          <span className="text-xs text-slate-500">
-            {done ? "Completed" : `Priority ${goal.priority}`}
-          </span>
+      <article className={`panel ${done ? "muted-record" : ""}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h2 className="text-lg font-semibold">{goal.name}</h2>
+          <StatusBadge
+            tone={done ? "good" : goal.priority === 3 ? "attention" : "neutral"}
+          >
+            {done
+              ? "Completed"
+              : `${goal.priority === 3 ? "High" : goal.priority === 2 ? "Medium" : goal.priority === 1 ? "Low" : goal.priority} Priority`}
+          </StatusBadge>
         </div>
-        <p className="mt-5 text-2xl font-semibold">
-          {rupiah(goal.currentAmount)}
-        </p>
+        <p className="mt-6 money">{rupiah(goal.currentAmount)}</p>
         <p className="text-sm text-slate-500">of {rupiah(goal.targetAmount)}</p>
         <div className="mt-4 h-2 rounded bg-slate-100">
           <div
@@ -122,10 +128,7 @@ function GoalCard({ goal }: { goal: Goal }) {
         <div className="mt-5 flex gap-3">
           {!done && (
             <DialogTrigger asChild>
-              <button
-                type="button"
-                className="text-sm font-semibold text-emerald-700"
-              >
+              <button type="button" className="button-primary">
                 Add Progress
               </button>
             </DialogTrigger>

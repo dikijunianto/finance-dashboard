@@ -23,7 +23,9 @@ import {
   DeleteConfirmation,
 } from "@/components/ui/mutation-form";
 import { isDebtPaidOff, progressPercent } from "@/lib/finance/calculations";
-import { formatMonth } from "@/lib/dates";
+import { billDueDate, formatDate, formatMonth } from "@/lib/dates";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { EmptyState } from "@/components/ui/empty-state";
 type Bill = {
   id: string;
   name: string;
@@ -63,21 +65,23 @@ export function BillsDebtPage({
     0,
   );
   return (
-    <div className="mx-auto max-w-6xl p-5 md:p-8">
+    <div className="page">
       <h1 className="text-3xl font-semibold">Bills & Debt</h1>
       <p className="mt-2 text-slate-600">
         Stay ahead of upcoming obligations. · {formatMonth(month)}
       </p>
-      <div className="mt-6 flex gap-2 border-b">
+      <div className="mt-6 flex items-center gap-2 border-b pb-3">
         <button
           onClick={() => setTab("bills")}
-          className={`px-4 py-3 text-sm ${tab === "bills" ? "border-b-2 border-emerald-700 font-semibold text-emerald-700" : "text-slate-500"}`}
+          aria-pressed={tab === "bills"}
+          className={`rounded-lg px-4 py-2.5 text-sm ${tab === "bills" ? "bg-emerald-50 font-semibold text-emerald-800" : "text-slate-500 hover:bg-white"}`}
         >
           Bills
         </button>
         <button
           onClick={() => setTab("debt")}
-          className={`px-4 py-3 text-sm ${tab === "debt" ? "border-b-2 border-emerald-700 font-semibold text-emerald-700" : "text-slate-500"}`}
+          aria-pressed={tab === "debt"}
+          className={`rounded-lg px-4 py-2.5 text-sm ${tab === "debt" ? "bg-emerald-50 font-semibold text-emerald-800" : "text-slate-500 hover:bg-white"}`}
         >
           Debt
         </button>
@@ -89,49 +93,70 @@ export function BillsDebtPage({
           <Stat label="Paid This Month" value={paidTotal} />
           <Stat label="Remaining" value={remaining} />
           <div className="md:col-span-3 rounded-2xl border bg-white">
+            <h2 className="border-b px-5 py-4 text-lg font-semibold">
+              Monthly obligations
+            </h2>
             {bills.length ? (
-              bills.map((b) => (
-                <div
-                  key={b.id}
-                  className="flex flex-wrap justify-between gap-3 border-b p-5"
-                >
-                  <div>
-                    <strong>{b.name}</strong>
-                    <p className="text-sm text-slate-500">
-                      Due day {b.dueDay} · Monthly
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <strong>{rupiah(b.amount)}</strong>
-                    <div className="mt-2 flex gap-2">
-                      {paidBillIds.includes(b.id) ? (
-                        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
-                          Paid
-                        </span>
-                      ) : b.isActive ? (
-                        <MutationForm action={markBillPaid}>
-                          <input name="id" type="hidden" value={b.id} />
-                          <button className="text-sm text-emerald-700">
-                            Mark Paid
-                          </button>
-                        </MutationForm>
-                      ) : (
-                        <span className="text-xs text-slate-500">Inactive</span>
-                      )}
-                      <DeleteConfirmation
-                        id={b.id}
-                        name={b.name}
-                        action={deleteBill}
-                        paymentHistory
-                      />
+              [...bills]
+                .sort((a, b) => a.dueDay - b.dueDay)
+                .map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex flex-wrap justify-between gap-3 border-b p-5"
+                  >
+                    <div className="flex items-start gap-4">
+                      <span className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">
+                        <b className="block text-xl font-semibold text-slate-700">
+                          {billDueDate(month, b.dueDay).slice(-2)}
+                        </b>
+                        {formatMonth(month).split(" ")[0].slice(0, 3)}
+                      </span>
+                      <div>
+                        <strong>{b.name}</strong>
+                        <p className="text-sm text-slate-500">
+                          Monthly · {formatDate(billDueDate(month, b.dueDay))}
+                        </p>
+                        {b.isActive && !paidBillIds.includes(b.id) && (
+                          <div className="mt-2">
+                            <StatusBadge tone="attention">Unpaid</StatusBadge>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <strong>{rupiah(b.amount)}</strong>
+                      <div className="mt-2 flex gap-2">
+                        {paidBillIds.includes(b.id) ? (
+                          <StatusBadge tone="good">Paid</StatusBadge>
+                        ) : b.isActive ? (
+                          <MutationForm action={markBillPaid}>
+                            <input name="id" type="hidden" value={b.id} />
+                            <button className="button-primary">
+                              Mark Paid
+                            </button>
+                          </MutationForm>
+                        ) : (
+                          <span className="text-xs text-slate-500">
+                            Inactive
+                          </span>
+                        )}
+                        <DeleteConfirmation
+                          id={b.id}
+                          name={b.name}
+                          action={deleteBill}
+                          paymentHistory
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
+                ))
             ) : (
-              <p className="p-10 text-center text-sm text-slate-500">
-                No bills yet. Add recurring bills to track upcoming obligations.
-              </p>
+              <EmptyState
+                title="No bills yet"
+                description="Add recurring bills to see upcoming obligations."
+              >
+                <EntryDialog type="bills" first />
+              </EmptyState>
             )}
           </div>
         </section>
@@ -150,9 +175,14 @@ export function BillsDebtPage({
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2">
             {!debts.length && (
-              <p className="text-sm text-slate-500">
-                No debts yet. Add a debt to track repayment.
-              </p>
+              <div className="panel md:col-span-2">
+                <EmptyState
+                  title="No debts yet"
+                  description="Keep remaining balances and repayment progress in one place."
+                >
+                  <EntryDialog type="debt" first />
+                </EmptyState>
+              </div>
             )}
             {debts.map((d) => {
               const isPaidOff = isDebtPaidOff(d);
@@ -163,17 +193,19 @@ export function BillsDebtPage({
                     d.originalAmount,
                   );
               return (
-                <article key={d.id} className="rounded-2xl border bg-white p-5">
+                <article
+                  key={d.id}
+                  className={`panel ${isPaidOff ? "muted-record" : ""}`}
+                >
                   <strong>{d.name}</strong>
-                  {isPaidOff && (
-                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                      Paid Off
-                    </span>
-                  )}
+                  {isPaidOff && <StatusBadge tone="good">Paid Off</StatusBadge>}
                   <p className="mt-4 text-sm text-slate-500">Remaining</p>
-                  <b className="text-2xl">
+                  <b className="money">
                     {rupiah(isPaidOff ? 0 : Math.max(0, d.remainingAmount))}
                   </b>
+                  <p className="mt-1 text-sm text-slate-500">
+                    of {rupiah(d.originalAmount)}
+                  </p>
                   <p className="mt-2 text-sm">
                     {p}% paid · {rupiah(d.installmentAmount)}/month · Due{" "}
                     {d.dueDay}
@@ -202,7 +234,13 @@ export function BillsDebtPage({
     </div>
   );
 }
-function EntryDialog({ type }: { type: "bills" | "debt" }) {
+function EntryDialog({
+  type,
+  first = false,
+}: {
+  type: "bills" | "debt";
+  first?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const action = type === "bills" ? createBill : createDebt;
   return (
@@ -212,7 +250,8 @@ function EntryDialog({ type }: { type: "bills" | "debt" }) {
           type="button"
           className="ml-auto mb-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
         >
-          + Add {type === "bills" ? "Bill" : "Debt"}
+          {first ? "Add your first" : "+ Add"}{" "}
+          {type === "bills" ? "Bill" : "Debt"}
         </button>
       </DialogTrigger>
       <DialogContent>
@@ -357,7 +396,7 @@ function PaymentDialog({ debt }: { debt: Debt }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button type="button" className="mt-4 text-sm text-emerald-700">
+        <button type="button" className="button-primary mt-5">
           Record Payment
         </button>
       </DialogTrigger>

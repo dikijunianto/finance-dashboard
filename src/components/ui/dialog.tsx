@@ -9,7 +9,7 @@ export const DialogDescription = DialogPrimitive.Description;
 export function DialogContent({ children }: { children: React.ReactNode }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-950/30" />
+      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-950/35" />
       <DialogPrimitive.Content
         aria-describedby={undefined}
         className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
@@ -35,6 +35,8 @@ export function DialogHeader({ children }: { children: React.ReactNode }) {
 }
 export function DialogFooter({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-6 flex flex-wrap justify-end gap-2">{children}</div>
+    <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
+      {children}
+    </div>
   );
 }
