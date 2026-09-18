@@ -11,16 +11,22 @@ export default async function Page() {
   ];
   return (
     <div className="page">
-      <p className="text-sm font-semibold text-emerald-700">
-        {formatMonth(r.month)}
-      </p>
-      <h1 className="mt-1 text-3xl font-semibold">Monthly Report</h1>
-      <p className="mt-2 text-slate-600">Understand what changed this month.</p>
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-semibold">Monthly Report</h1>
+          <p className="mt-2 text-slate-600">
+            Understand what changed this month.
+          </p>
+        </div>
+        <span className="rounded-full border bg-white px-4 py-2 text-sm text-muted">
+          {formatMonth(r.month)}
+        </span>
+      </header>
+      <div className="summary-strip report-summary mt-8 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(([label, value]) => (
           <section
             key={String(label)}
-            className="min-w-0 rounded-2xl border bg-white p-4 md:p-5"
+            className={`summary-cell ${label === "Net Cash Flow" ? "bg-soft" : ""}`}
           >
             <p className="text-sm text-slate-500">{label}</p>
             <strong className="mt-2 block text-lg font-semibold tracking-tight sm:text-2xl">
@@ -31,39 +37,44 @@ export default async function Page() {
           </section>
         ))}
       </div>
-      <section className="panel mt-6">
-        <div className="flex flex-wrap justify-between gap-2">
-          <h2 className="text-lg font-semibold">Income vs Expenses</h2>
-          <span className="text-xs text-slate-500">{formatMonth(r.month)}</span>
-        </div>
-        {r.transactionCount ? (
-          <div className="mt-5 grid gap-6 md:grid-cols-2">
-            {[
-              ["Income", r.income],
-              ["Expenses", r.expenses],
-            ].map(([label, amount]) => (
-              <div key={String(label)}>
-                <div className="mb-3 flex justify-between gap-3 text-sm">
-                  <span>{label}</span>
-                  <strong>{rupiah(Number(amount))}</strong>
-                </div>
-                <progress
-                  aria-label={String(label)}
-                  className={`h-3 w-full ${label === "Income" ? "accent-emerald-700" : "accent-slate-400"}`}
-                  max={Math.max(1, r.income, r.expenses)}
-                  value={Math.max(0, Number(amount))}
-                />
-              </div>
-            ))}
+      <div className="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <section className="panel">
+          <p className="eyebrow mb-3">The monthly picture</p>
+          <div className="flex flex-wrap justify-between gap-2">
+            <h2 className="text-lg font-semibold">Income vs Expenses</h2>
+            <span className="text-xs text-slate-500">
+              {formatMonth(r.month)}
+            </span>
           </div>
-        ) : (
-          <p className="mt-4 text-sm text-slate-500">
-            No cash flow recorded this month. A comparison appears when
-            transactions are available.
-          </p>
-        )}
-      </section>
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          {r.transactionCount ? (
+            <div className="mt-8 space-y-8">
+              {[
+                ["Income", r.income],
+                ["Expenses", r.expenses],
+              ].map(([label, amount]) => (
+                <div key={String(label)}>
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3 text-sm">
+                    <span>{label}</span>
+                    <strong className="text-2xl font-semibold">
+                      {rupiah(Number(amount))}
+                    </strong>
+                  </div>
+                  <progress
+                    aria-label={String(label)}
+                    className={`h-4 w-full ${label === "Income" ? "accent-emerald-700" : "accent-slate-400"}`}
+                    max={Math.max(1, r.income, r.expenses)}
+                    value={Math.max(0, Number(amount))}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              No cash flow recorded this month. A comparison appears when
+              transactions are available.
+            </p>
+          )}
+        </section>
         <section className="panel">
           <h2 className="text-lg font-semibold">Spending Breakdown</h2>
           {r.categories.length ? (
@@ -90,9 +101,11 @@ export default async function Page() {
             </p>
           )}
         </section>
-        <section className="panel">
-          <h2 className="text-lg font-semibold">Debt & Goals</h2>
-          <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+      </div>
+      <div className="mt-5 grid gap-5 md:grid-cols-2">
+        <section className="rounded-2xl border bg-soft p-6">
+          <h2 className="text-lg font-semibold">Debt Progress</h2>
+          <div className="mt-5 grid gap-5 sm:grid-cols-2 text-sm">
             <p>
               Debt paid
               <br />
@@ -107,6 +120,11 @@ export default async function Page() {
                 {rupiah(r.debtRemaining)}
               </strong>
             </p>
+          </div>
+        </section>
+        <section className="rounded-2xl border p-6">
+          <h2 className="text-lg font-semibold">Goals Summary</h2>
+          <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
             <p>
               Active goals
               <br />
@@ -125,9 +143,9 @@ export default async function Page() {
         transfers. Expenses are recorded Cash Flow expenses; bill and debt
         payments are reported separately.
       </p>
-      <section className="panel mt-6 border-l-4 border-l-emerald-700">
+      <section className="mt-8 grid gap-4 border-t pt-6 md:grid-cols-[1fr_2fr]">
         <h2 className="text-lg font-semibold">Financial Insight</h2>
-        <p className="mt-3 text-sm text-slate-600">
+        <p className="text-lg leading-relaxed text-slate-600">
           {r.income === 0
             ? "Record income in Cash Flow to unlock a complete monthly report."
             : r.net === 0

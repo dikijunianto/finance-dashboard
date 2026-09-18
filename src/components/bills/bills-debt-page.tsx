@@ -70,7 +70,7 @@ export function BillsDebtPage({
       <p className="mt-2 text-slate-600">
         Stay ahead of upcoming obligations. · {formatMonth(month)}
       </p>
-      <div className="mt-6 flex items-center gap-2 border-b pb-3">
+      <div className="editorial-tabs mt-8 flex items-center gap-2 border-b">
         <button
           onClick={() => setTab("bills")}
           aria-pressed={tab === "bills"}
@@ -88,12 +88,14 @@ export function BillsDebtPage({
         <EntryDialog key={tab} type={tab} />
       </div>
       {tab === "bills" ? (
-        <section className="mt-6 grid gap-4 md:grid-cols-3">
-          <Stat label="Due This Month" value={remaining + paidTotal} />
-          <Stat label="Paid This Month" value={paidTotal} />
-          <Stat label="Remaining" value={remaining} />
-          <div className="md:col-span-3 rounded-2xl border bg-white">
-            <h2 className="border-b px-5 py-4 text-lg font-semibold">
+        <section className="mt-6">
+          <div className="summary-strip sm:grid-cols-3">
+            <Stat label="Due This Month" value={remaining + paidTotal} />
+            <Stat label="Paid This Month" value={paidTotal} />
+            <Stat label="Remaining" value={remaining} />
+          </div>
+          <div className="mt-8">
+            <h2 className="border-b pb-4 text-xl font-semibold">
               Monthly obligations
             </h2>
             {bills.length ? (
@@ -102,17 +104,17 @@ export function BillsDebtPage({
                 .map((b) => (
                   <div
                     key={b.id}
-                    className="flex flex-wrap justify-between gap-3 border-b p-5"
+                    className={`flex flex-wrap items-center justify-between gap-4 border-b py-5 ${paidBillIds.includes(b.id) || !b.isActive ? "text-muted" : ""}`}
                   >
                     <div className="flex items-start gap-4">
-                      <span className="rounded-lg bg-slate-50 px-3 py-2 text-center text-xs text-slate-500">
+                      <span className="w-16 shrink-0 border-l-2 border-brand/25 py-2 pl-3 text-xs text-muted">
                         <b className="block text-xl font-semibold text-slate-700">
                           {billDueDate(month, b.dueDay).slice(-2)}
                         </b>
                         {formatMonth(month).split(" ")[0].slice(0, 3)}
                       </span>
                       <div>
-                        <strong>{b.name}</strong>
+                        <strong className="text-lg">{b.name}</strong>
                         <p className="text-sm text-slate-500">
                           Monthly · {formatDate(billDueDate(month, b.dueDay))}
                         </p>
@@ -123,8 +125,10 @@ export function BillsDebtPage({
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <strong>{rupiah(b.amount)}</strong>
+                    <div className="ml-auto text-right">
+                      <strong className="text-xl font-semibold tracking-tight">
+                        {rupiah(b.amount)}
+                      </strong>
                       <div className="mt-2 flex gap-2">
                         {paidBillIds.includes(b.id) ? (
                           <StatusBadge tone="good">Paid</StatusBadge>
@@ -162,7 +166,7 @@ export function BillsDebtPage({
         </section>
       ) : (
         <section className="mt-6">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="summary-strip sm:grid-cols-3">
             <Stat label="Total Remaining Debt" value={total} />
             <Stat
               label="Monthly Payments"
@@ -197,27 +201,32 @@ export function BillsDebtPage({
                   key={d.id}
                   className={`panel ${isPaidOff ? "muted-record" : ""}`}
                 >
-                  <strong>{d.name}</strong>
-                  {isPaidOff && <StatusBadge tone="good">Paid Off</StatusBadge>}
-                  <p className="mt-4 text-sm text-slate-500">Remaining</p>
-                  <b className="money">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <h2 className="text-lg font-semibold">{d.name}</h2>
+                    <StatusBadge tone={isPaidOff ? "good" : "neutral"}>
+                      {isPaidOff ? "Paid Off" : "Active"}
+                    </StatusBadge>
+                  </div>
+                  <p className="mt-7 text-sm text-slate-500">Remaining</p>
+                  <b className="mt-1 block hero-amount">
                     {rupiah(isPaidOff ? 0 : Math.max(0, d.remainingAmount))}
                   </b>
                   <p className="mt-1 text-sm text-slate-500">
                     of {rupiah(d.originalAmount)}
                   </p>
-                  <p className="mt-2 text-sm">
-                    {p}% paid · {rupiah(d.installmentAmount)}/month · Due{" "}
-                    {d.dueDay}
-                  </p>
-                  <div className="mt-3 h-2 rounded bg-slate-100">
-                    <div
-                      className="h-full rounded bg-emerald-600"
-                      style={{ width: `${p}%` }}
-                    />
+                  <progress
+                    aria-label={`${d.name} paid`}
+                    className="mt-6 h-2 w-full"
+                    value={p}
+                    max={100}
+                  />
+                  <p className="mt-2 text-sm font-medium">{p}% paid</p>
+                  <div className="mt-5 flex flex-wrap justify-between gap-2 text-sm text-muted">
+                    <span>{rupiah(d.installmentAmount)}/month</span>
+                    <span>Due {d.dueDay}</span>
                   </div>
-                  {!isPaidOff && <PaymentDialog debt={d} />}
-                  <div className="mt-3">
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+                    {!isPaidOff && <PaymentDialog debt={d} />}
                     <DeleteConfirmation
                       id={d.id}
                       name={d.name}
@@ -396,7 +405,7 @@ function PaymentDialog({ debt }: { debt: Debt }) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button type="button" className="button-primary mt-5">
+        <button type="button" className="button-primary">
           Record Payment
         </button>
       </DialogTrigger>
@@ -444,7 +453,7 @@ function PaymentDialog({ debt }: { debt: Debt }) {
 }
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-2xl border bg-white p-5">
+    <div className="summary-cell">
       <p className="text-sm text-slate-500">{label}</p>
       <strong className="mt-2 block text-2xl">
         {label === "Active Debts" ? value : rupiah(value)}

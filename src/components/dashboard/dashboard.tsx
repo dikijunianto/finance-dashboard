@@ -91,324 +91,335 @@ export function Dashboard({ data }: { data: Data }) {
             Your financial position at a glance.
           </p>
         </div>
-        <span className="rounded-lg border bg-white px-3 py-2 text-sm text-slate-600">
+        <span className="rounded-full border bg-white px-4 py-2 text-sm text-slate-600">
           {formatMonth(data.month)}
         </span>
       </header>
-      <div>
-        <p className="eyebrow mb-3">Now · Your money this month</p>
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-          <section className="flex min-w-0 flex-col justify-between rounded-2xl bg-[#153e34] p-6 text-white md:p-8">
+      <div className="overview-grid">
+        <section className="overview-hero cash-hero flex min-w-0 flex-col justify-between rounded-2xl p-6 md:p-8">
+          <div>
+            <p className="eyebrow">Now · Your money</p>
+            <p className="mt-8 hero-amount">
+              {data.hasAccounts ? rupiah(data.cashAvailable) : "Not available"}
+            </p>
+            <p className="mt-2 text-lg font-medium">Cash Available</p>
+            <p className="mt-3 max-w-md text-sm text-slate-600">
+              {data.hasAccounts
+                ? "Your recorded balances across active banks, cash, and wallets."
+                : "Add an account to track your available balance."}
+            </p>
+          </div>
+          <div className="mt-8 flex flex-wrap items-end justify-between gap-5 border-t border-ink/10 pt-5">
             <div>
-              <p className="text-sm text-emerald-100">Cash Available</p>
-              <p className="mt-4 text-4xl font-semibold tracking-tight md:text-5xl">
-                {data.hasAccounts
-                  ? rupiah(data.cashAvailable)
-                  : "Not available"}
+              <p className="text-sm text-muted">Monthly Surplus</p>
+              <p className="mt-1 text-2xl font-semibold">
+                {rupiah(data.surplus)}
               </p>
-              <p className="mt-3 max-w-md text-sm text-emerald-100">
-                {data.hasAccounts
-                  ? "Your recorded balances across active banks, cash, and wallets."
-                  : "Add an account to track your available balance."}
+              <p className="mt-1 text-xs text-muted">
+                Income less recorded expenses
               </p>
             </div>
-            <Link
-              href="/accounts"
-              className="mt-7 inline-flex w-fit items-center gap-2 rounded-lg border border-white/25 px-4 py-2.5 text-sm font-medium hover:bg-white/10"
-            >
+            <Link href="/accounts" className="button-primary w-fit">
               {data.hasAccounts ? "Manage Accounts" : "Add Account"}
               <ArrowUpRight size={16} />
             </Link>
-          </section>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <Metric
-              title="Safe-to-Spend"
-              value={data.hasAccounts ? rupiah(data.safe) : "Not available"}
-              caption="After obligations and planned reserves"
-            />
-            <Metric
-              title="Monthly Surplus"
-              value={rupiah(data.surplus)}
-              caption="Income less recorded expenses"
-            />
-            <Metric
-              title="Bills Remaining"
-              value={rupiah(data.bills.unpaidTotal)}
-              caption={data.bills.unpaidCount + " unpaid this month"}
-            />
-            <Metric
-              title="Total Debt"
-              value={rupiah(data.debtTotal)}
-              caption={data.debtCount + " active debts"}
-            />
           </div>
-        </div>
-      </div>
-      <div>
-        <p className="eyebrow mb-3">Next · Stay one step ahead</p>
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          <section className="panel">
-            <h2 className="text-lg font-semibold">Needs your attention</h2>
-            {attention.length ? (
-              <div className="mt-3 divide-y">
-                {attention.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center justify-between gap-4 py-4 hover:text-emerald-800"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">{item.title}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        {item.detail}
-                      </p>
-                    </div>
-                    <ArrowUpRight
-                      size={18}
-                      className="shrink-0 text-slate-400"
-                    />
-                  </Link>
-                ))}
+        </section>
+        <section className="overview-safe panel">
+          <p className="eyebrow mb-4">Room to breathe</p>
+          <Metric
+            title="Safe-to-Spend"
+            value={data.hasAccounts ? rupiah(data.safe) : "Not available"}
+            caption="After obligations and planned reserves"
+          />
+        </section>
+        <section className="overview-obligations panel divide-y">
+          <Metric
+            title="Bills Remaining"
+            value={rupiah(data.bills.unpaidTotal)}
+            caption={data.bills.unpaidCount + " unpaid this month"}
+          />
+          <Metric
+            title="Total Debt"
+            value={rupiah(data.debtTotal)}
+            caption={data.debtCount + " active debts"}
+          />
+        </section>
+        <section className="overview-attention rounded-2xl border border-brand/15 bg-brand-soft/40 p-5 md:p-6">
+          <p className="eyebrow mb-3">Next · Stay one step ahead</p>
+          <h2 className="text-lg font-semibold">Needs your attention</h2>
+          {attention.length ? (
+            <div className="mt-3 divide-y">
+              {attention.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center justify-between gap-4 py-4 hover:text-emerald-800"
+                >
+                  <div>
+                    <p className="text-sm font-semibold">{item.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">{item.detail}</p>
+                  </div>
+                  <ArrowUpRight size={18} className="shrink-0 text-slate-400" />
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-5 flex items-start gap-3">
+              <CheckCircle2 className="text-emerald-700" size={20} />
+              <div>
+                <p className="font-medium">You’re on track</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  No urgent financial items right now.
+                </p>
               </div>
-            ) : (
-              <div className="mt-5 flex items-start gap-3">
-                <CheckCircle2 className="text-emerald-700" size={20} />
-                <div>
-                  <p className="font-medium">You’re on track</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    No urgent financial items right now.
-                  </p>
-                </div>
-              </div>
-            )}
-          </section>
-          <section className="panel">
-            <SectionTitle
-              title="Upcoming Bills"
-              href="/bills"
-              label="View all"
-            />
-            {data.billsList.length ? (
-              <div className="mt-3 divide-y">
-                {data.billsList.map((b) => (
-                  <div
-                    key={b.id}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="max-w-24 rounded-lg bg-slate-50 p-2 text-xs font-medium text-slate-600">
-                        {b.dueDate}
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold">{b.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Monthly · Unpaid
-                        </p>
-                      </div>
-                    </div>
-                    <strong className="text-sm">{rupiah(b.amount)}</strong>
+            </div>
+          )}
+        </section>
+        <section className="overview-cashflow panel">
+          <p className="eyebrow mb-3">This month</p>
+          <SectionTitle
+            title="Monthly Cash Flow"
+            href="/cash-flow"
+            label="View activity"
+          />
+          {data.cashFlow.length > 1 ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={data.cashFlow}>
+                <XAxis dataKey="month" axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v) => rupiah(Number(v))} />
+                <Legend />
+                <Bar
+                  dataKey="income"
+                  name="Income"
+                  fill="var(--green)"
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="expenses"
+                  name="Expenses"
+                  fill="var(--muted)"
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : data.cashFlow.length ? (
+            <div className="mt-6">
+              <div className="grid gap-5 sm:grid-cols-3">
+                {[
+                  ["Income", data.cashFlow[0].income],
+                  ["Expenses", data.cashFlow[0].expenses],
+                  ["Net Cash Flow", data.surplus],
+                ].map(([label, value]) => (
+                  <div key={String(label)}>
+                    <p className="text-sm text-muted">{label}</p>
+                    <p className="mt-2 text-2xl font-semibold tracking-tight">
+                      {rupiah(Number(value))}
+                    </p>
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="mt-5 text-sm text-slate-500">
-                No unpaid bills this month.
+              <p className="mt-6 border-t pt-4 text-xs text-slate-500">
+                {formatMonth(data.month)} · A trend appears when multiple months
+                are available.
               </p>
-            )}
-          </section>
-        </div>
-      </div>
-      <div>
-        <p className="eyebrow mb-3">Progress · Make room for what matters</p>
-        <div className="grid items-start gap-5 lg:grid-cols-2">
-          <section className="panel">
-            <SectionTitle
-              title="Monthly Cash Flow"
-              href="/cash-flow"
-              label="View activity"
-            />
-            {data.cashFlow.length > 1 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={data.cashFlow}>
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => rupiah(Number(v))} />
-                  <Legend />
-                  <Bar
-                    dataKey="income"
-                    name="Income"
-                    fill="#15803d"
-                    isAnimationActive={false}
-                  />
-                  <Bar
-                    dataKey="expenses"
-                    name="Expenses"
-                    fill="#94a3b8"
-                    isAnimationActive={false}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : data.cashFlow.length ? (
-              <div className="mt-5 space-y-4">
-                <Amount label="Income" value={data.cashFlow[0].income} />
-                <Amount label="Expenses" value={data.cashFlow[0].expenses} />
-                <div className="border-t pt-4">
-                  <Amount label="Net Cash Flow" value={data.surplus} />
-                </div>
-                <p className="text-xs text-slate-500">
-                  {formatMonth(data.month)} · A trend appears when multiple
-                  months are available.
-                </p>
-              </div>
-            ) : (
-              <p className="mt-5 text-sm text-slate-500">
-                No cash-flow history yet. Add income or expenses to start seeing
-                monthly totals.
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              No cash-flow history yet. Add income or expenses to start seeing
+              monthly totals.
+            </p>
+          )}
+        </section>
+        <section className="overview-plan panel">
+          <p className="eyebrow mb-3">Progress · Give every Rupiah a purpose</p>
+          <SectionTitle title="Monthly Plan" href="/budget" label="View Plan" />
+          <div className="mt-6 space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-3xl font-semibold tracking-tight">
+                {data.plan.income > 0
+                  ? `${Math.round((data.plan.allocated / data.plan.income) * 100)}%`
+                  : "—"}
+                <span className="ml-2 text-base font-normal text-muted">
+                  allocated
+                </span>
               </p>
-            )}
-          </section>
-          <section className="panel">
-            <SectionTitle
-              title="Monthly Plan"
-              href="/budget"
-              label="View Plan"
-            />
-            <div className="mt-5 space-y-3">
-              <Amount label="Income" value={data.plan.income} />
-              <Amount label="Allocated" value={data.plan.allocated} />
-              <progress
-                aria-label="Income allocated"
-                className="h-2 w-full accent-emerald-700"
-                value={Math.max(
-                  0,
-                  Math.min(data.plan.allocated, Math.max(0, data.plan.income)),
-                )}
-                max={Math.max(1, data.plan.income)}
-              />
-              <Amount label="Remaining" value={data.plan.remaining} />
               <StatusBadge tone={planTone}>{planStatus}</StatusBadge>
             </div>
-          </section>
-          <section className="panel">
-            <SectionTitle
-              title="Financial Goals"
-              href="/goals"
-              label="View Goals"
+            <progress
+              aria-label="Income allocated"
+              className="h-3 w-full accent-emerald-700"
+              value={Math.max(
+                0,
+                Math.min(data.plan.allocated, Math.max(0, data.plan.income)),
+              )}
+              max={Math.max(1, data.plan.income)}
             />
-            {data.goals.length ? (
-              <div className="mt-4 divide-y">
-                {data.goals.map((g) => {
-                  const done = isGoalCompleted(g);
-                  const percent = done
-                    ? 100
-                    : progressPercent(g.currentAmount, g.targetAmount);
-                  return (
-                    <div key={g.id} className="py-4 first:pt-0">
-                      <div className="flex flex-wrap justify-between gap-2">
-                        <p className="text-sm font-semibold">{g.name}</p>
-                        {done ? (
-                          <StatusBadge tone="good">Completed</StatusBadge>
-                        ) : (
-                          <span className="text-sm text-slate-500">
-                            {percent}%
-                          </span>
-                        )}
-                      </div>
-                      <progress
-                        aria-label={g.name + " progress"}
-                        value={percent}
-                        max={100}
-                        className="mt-3 h-2 w-full accent-emerald-700"
-                      />
-                      <p className="mt-2 text-xs text-slate-500">
-                        {rupiah(g.currentAmount)} of {rupiah(g.targetAmount)}
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                ["Income", data.plan.income],
+                ["Allocated", data.plan.allocated],
+                ["Remaining", data.plan.remaining],
+              ].map(([label, value]) => (
+                <div key={String(label)}>
+                  <p className="text-sm text-muted">{label}</p>
+                  <p className="mt-1 text-lg font-semibold">
+                    {rupiah(Number(value))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        <section className="overview-upcoming panel">
+          <SectionTitle title="Upcoming Bills" href="/bills" label="View all" />
+          {data.billsList.length ? (
+            <div className="mt-3 divide-y">
+              {data.billsList.map((b) => (
+                <div
+                  key={b.id}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="max-w-20 border-l-2 border-brand/25 pl-3 text-xs font-medium text-slate-600">
+                      {b.dueDate}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">{b.name}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Monthly · Unpaid
                       </p>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="mt-5 text-sm text-slate-500">
-                No financial goals yet. Create a target to track your progress.
-              </p>
-            )}
-          </section>
-          <section className="panel">
-            <h2 className="text-lg font-semibold">Financial Health</h2>
-            <div className="mt-5 space-y-4">
-              <div className="flex flex-wrap justify-between gap-3 text-sm">
-                <span className="text-slate-500">Financial Status</span>
-                <strong>
-                  {data.hasAccounts
-                    ? data.status.label
-                    : "Not enough account data"}
-                </strong>
-              </div>
-              <div className="flex justify-between gap-3 text-sm">
-                <span className="text-slate-500">Planned Saving Rate</span>
-                <strong>{data.savingRate}%</strong>
-              </div>
-              <Amount
-                label="Safe-to-Spend"
-                value={data.hasAccounts ? data.safe : null}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                <span className="text-slate-500">Plan Status</span>
-                <StatusBadge tone={planTone}>{planStatus}</StatusBadge>
-              </div>
-              <p className="text-xs leading-relaxed text-slate-500">
-                Based on recorded balances, current obligations, and planned
-                reserves. Saving rate reflects your plan, not confirmed
-                transfers.
-              </p>
+                  </div>
+                  <strong className="text-sm">{rupiah(b.amount)}</strong>
+                </div>
+              ))}
             </div>
-          </section>
-          <section className="panel">
-            <h2 className="text-lg font-semibold">Net Worth</h2>
-            {data.netWorth.length > 1 ? (
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={data.netWorth}>
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} />
-                  <Tooltip formatter={(v) => rupiah(Number(v))} />
-                  <Area
-                    dataKey="value"
-                    stroke="#15803d"
-                    fill="#eef6f1"
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="mt-4 text-sm text-slate-500">
-                {data.netWorth.length
-                  ? rupiah(data.netWorth[0].value) +
-                    " recorded for " +
-                    data.netWorth[0].month +
-                    ". More history is needed for a trend."
-                  : "No saved net-worth history yet. Historical values are shown only when recorded."}
-              </p>
-            )}
-          </section>
-          <section className="panel">
-            <SectionTitle
-              title="Financial Notes"
-              href="/settings"
-              label="View notes"
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              No unpaid bills this month.
+            </p>
+          )}
+        </section>
+        <section className="overview-goals panel">
+          <SectionTitle
+            title="Financial Goals"
+            href="/goals"
+            label="View Goals"
+          />
+          {data.goals.length ? (
+            <div className="mt-4 divide-y">
+              {data.goals.map((g) => {
+                const done = isGoalCompleted(g);
+                const percent = done
+                  ? 100
+                  : progressPercent(g.currentAmount, g.targetAmount);
+                return (
+                  <div key={g.id} className="py-4 first:pt-0">
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <p className="text-sm font-semibold">{g.name}</p>
+                      {done ? (
+                        <StatusBadge tone="good">Completed</StatusBadge>
+                      ) : (
+                        <span className="text-sm text-slate-500">
+                          {percent}%
+                        </span>
+                      )}
+                    </div>
+                    <progress
+                      aria-label={g.name + " progress"}
+                      value={percent}
+                      max={100}
+                      className="mt-3 h-2 w-full accent-emerald-700"
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      {rupiah(g.currentAmount)} of {rupiah(g.targetAmount)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-slate-500">
+              No financial goals yet. Create a target to track your progress.
+            </p>
+          )}
+        </section>
+        <section className="overview-health rounded-2xl border bg-soft p-5 md:p-6">
+          <h2 className="text-lg font-semibold">Financial Health</h2>
+          <div className="mt-5 space-y-4">
+            <div className="flex flex-wrap justify-between gap-3 text-sm">
+              <span className="text-slate-500">Financial Status</span>
+              <strong>
+                {data.hasAccounts
+                  ? data.status.label
+                  : "Not enough account data"}
+              </strong>
+            </div>
+            <div className="flex justify-between gap-3 text-sm">
+              <span className="text-slate-500">Planned Saving Rate</span>
+              <strong>{data.savingRate}%</strong>
+            </div>
+            <Amount
+              label="Safe-to-Spend"
+              value={data.hasAccounts ? data.safe : null}
             />
-            {data.notes.length ? (
-              <ul className="mt-4 space-y-3 text-sm text-slate-600">
-                {data.notes.map((n) => (
-                  <li key={n.id} className="border-l-2 border-emerald-100 pl-3">
-                    {n.content}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-4 text-sm text-slate-500">
-                No financial notes yet.
-              </p>
-            )}
-          </section>
-        </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="text-slate-500">Plan Status</span>
+              <StatusBadge tone={planTone}>{planStatus}</StatusBadge>
+            </div>
+            <p className="text-xs leading-relaxed text-slate-500">
+              Based on recorded balances, current obligations, and planned
+              reserves. Saving rate reflects your plan, not confirmed transfers.
+            </p>
+          </div>
+        </section>
+        <section className="overview-history panel">
+          <h2 className="text-lg font-semibold">Net Worth</h2>
+          {data.netWorth.length > 1 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={data.netWorth}>
+                <XAxis dataKey="month" axisLine={false} tickLine={false} />
+                <Tooltip formatter={(v) => rupiah(Number(v))} />
+                <Area
+                  dataKey="value"
+                  stroke="var(--green)"
+                  fill="var(--green-soft)"
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              {data.netWorth.length
+                ? rupiah(data.netWorth[0].value) +
+                  " recorded for " +
+                  data.netWorth[0].month +
+                  ". More history is needed for a trend."
+                : "No saved net-worth history yet. Historical values are shown only when recorded."}
+            </p>
+          )}
+        </section>
+        <section className="overview-notes rounded-2xl border p-5 md:p-6">
+          <SectionTitle
+            title="Financial Notes"
+            href="/settings"
+            label="View notes"
+          />
+          {data.notes.length ? (
+            <ul className="mt-4 space-y-3 text-sm text-slate-600">
+              {data.notes.map((n) => (
+                <li key={n.id} className="border-l-2 border-emerald-100 pl-3">
+                  {n.content}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              No financial notes yet.
+            </p>
+          )}
+        </section>
       </div>
     </div>
   );
@@ -423,13 +434,13 @@ function Metric({
   caption: string;
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border bg-white p-4 sm:p-5">
+    <div className="min-w-0 py-3 first:pt-0 last:pb-0">
       <p className="text-sm text-slate-500">{title}</p>
       <p className="mt-2 text-lg font-semibold tracking-tight sm:text-2xl">
         {value}
       </p>
       <p className="mt-2 text-xs text-slate-500">{caption}</p>
-    </section>
+    </div>
   );
 }
 function SectionTitle({

@@ -13,42 +13,56 @@ import {
 } from "lucide-react";
 import { logout } from "@/actions/auth";
 const links = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/accounts", label: "Accounts", icon: Landmark },
-  { href: "/cash-flow", label: "Cash Flow", icon: BarChart3 },
-  { href: "/bills", label: "Bills & Debt", icon: CreditCard },
-  { href: "/budget", label: "Plan", icon: Wallet },
-  { href: "/goals", label: "Goals", icon: Target },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+  {
+    href: "/dashboard",
+    label: "Overview",
+    icon: LayoutDashboard,
+    group: "Overview",
+  },
+  { href: "/accounts", label: "Accounts", icon: Landmark, group: "Money" },
+  { href: "/cash-flow", label: "Cash Flow", icon: BarChart3, group: "Money" },
+  { href: "/bills", label: "Bills & Debt", icon: CreditCard, group: "Plan" },
+  { href: "/budget", label: "Plan", icon: Wallet, group: "Plan" },
+  { href: "/goals", label: "Goals", icon: Target, group: "Plan" },
+  { href: "/reports", label: "Reports", icon: BarChart3, group: "Insights" },
 ];
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   return (
-    <div className="min-h-screen bg-[var(--bg)] lg:grid lg:grid-cols-[232px_1fr]">
-      <aside className="sticky top-0 hidden h-screen border-r border-emerald-950/5 bg-white px-4 py-7 lg:flex lg:flex-col">
+    <div className="finance-shell min-h-screen lg:grid lg:grid-cols-[232px_1fr]">
+      <aside className="finance-sidebar sticky top-0 hidden h-screen overflow-y-auto px-4 py-7 lg:flex lg:flex-col">
         <Link href="/dashboard" className="flex items-center gap-3 px-2">
-          <span className="grid size-10 place-items-center rounded-xl bg-emerald-700 text-white shadow-sm">
+          <span className="grid size-10 place-items-center rounded-xl bg-ink text-white">
             <CircleDollarSign size={21} />
           </span>
           <span>
             <strong className="block tracking-tight">MyFinance</strong>
-            <small className="text-slate-500">Your Personal CFO</small>
+            <small className="text-slate-500">Personal CFO</small>
           </span>
         </Link>
-        <nav aria-label="Primary navigation" className="mt-12 space-y-1.5">
-          {links.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={path === href ? "page" : undefined}
-              className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-emerald-50 text-emerald-800" : "text-slate-600 hover:bg-slate-50"}`}
-            >
-              <Icon size={18} />
-              {label}
-            </Link>
+        <nav aria-label="Primary navigation" className="mt-9 space-y-6">
+          {["Overview", "Money", "Plan", "Insights"].map((group) => (
+            <div key={group}>
+              <p className="eyebrow mb-2 px-3">{group}</p>
+              <div className="space-y-1">
+                {links
+                  .filter((link) => link.group === group)
+                  .map(({ href, label, icon: Icon }) => (
+                    <Link
+                      key={href}
+                      href={href}
+                      aria-current={path === href ? "page" : undefined}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${path === href ? "bg-brand-soft text-brand" : "text-slate-600 hover:bg-white/60"}`}
+                    >
+                      <Icon size={18} />
+                      {label}
+                    </Link>
+                  ))}
+              </div>
+            </div>
           ))}
         </nav>
-        <div className="mt-auto border-t border-slate-100 pt-5">
+        <div className="mt-auto border-t pt-5">
           <Link
             href="/settings"
             className="flex items-center gap-3 px-3 py-2 text-sm text-slate-500"
@@ -56,7 +70,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <Settings size={17} />
             Settings
           </Link>
-          <div className="mt-3 rounded-xl bg-slate-50 p-3">
+          <div className="mt-3 p-3">
             <strong className="text-sm">MyFinance</strong>
             <p className="text-xs text-slate-500">Private account</p>
             <form action={logout}>

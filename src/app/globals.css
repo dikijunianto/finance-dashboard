@@ -1,10 +1,22 @@
 @import "tailwindcss";
 :root {
-  --ink: #17251d;
-  --muted: #6b766f;
-  --line: #e6ebe7;
-  --green: #15803d;
-  --bg: #f5f7f6;
+  --ink: #17201c;
+  --muted: #6e756f;
+  --line: #e2e6e1;
+  --green: #0e7c59;
+  --bg: #f4f5f1;
+  --surface: #ffffff;
+  --soft: #ecefe8;
+  --green-soft: #dff3ea;
+  --warning: #d79a2b;
+  --danger: #d95b5b;
+}
+@theme inline {
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-soft: var(--soft);
+  --color-brand: var(--green);
+  --color-brand-soft: var(--green-soft);
 }
 @layer base {
   *,
@@ -58,7 +70,7 @@ b {
 }
 @layer components {
   .page {
-    @apply mx-auto w-full max-w-[1280px] p-4 md:p-6 xl:p-8;
+    @apply mx-auto w-full max-w-[1360px] p-4 md:p-6 xl:p-8;
   }
   .panel {
     @apply min-w-0 rounded-2xl border bg-white p-5 md:p-6;
@@ -79,6 +91,38 @@ b {
   .muted-record {
     @apply border-slate-200 bg-slate-50 text-slate-600;
   }
+  .summary-strip {
+    @apply grid overflow-hidden rounded-2xl border bg-white;
+  }
+  .summary-cell {
+    @apply min-w-0 p-5 md:p-6;
+  }
+  .summary-cell + .summary-cell {
+    border-top: 1px solid var(--line);
+  }
+  @media (min-width: 640px) {
+    .summary-cell + .summary-cell {
+      border-top: 0;
+      border-left: 1px solid var(--line);
+    }
+    .report-summary .summary-cell:nth-child(3) {
+      border-left: 0;
+    }
+    .report-summary .summary-cell:nth-child(n + 3) {
+      border-top: 1px solid var(--line);
+    }
+  }
+  @media (min-width: 1280px) {
+    .report-summary .summary-cell:nth-child(3) {
+      border-left: 1px solid var(--line);
+    }
+    .report-summary .summary-cell:nth-child(n + 3) {
+      border-top: 0;
+    }
+  }
+  .hero-amount {
+    @apply text-4xl font-semibold tracking-tight xl:text-5xl;
+  }
 }
 .page h1 {
   letter-spacing: -0.035em;
@@ -89,14 +133,14 @@ progress {
   border: 0;
   overflow: hidden;
   border-radius: 999px;
-  background: #edf1ef;
-  --progress-color: #168260;
+  background: var(--soft);
+  --progress-color: var(--green);
 }
 progress[class*="accent-slate"] {
   --progress-color: #94a3b8;
 }
 progress::-webkit-progress-bar {
-  background: #edf1ef;
+  background: var(--soft);
   border-radius: 999px;
 }
 progress::-webkit-progress-value {
@@ -131,4 +175,111 @@ progress::-moz-progress-bar {
   *::after {
     transition: none !important;
   }
+}
+
+/* Warm editorial surfaces; domain layouts own their information hierarchy. */
+.finance-shell {
+  color: var(--ink);
+  background: var(--bg);
+}
+.finance-sidebar {
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+.finance-shell .eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+.finance-shell :is(.text-slate-500, .text-slate-600) {
+  color: var(--muted);
+}
+.finance-shell :is(button.bg-emerald-700, .button-primary),
+[role="dialog"] button.bg-emerald-700 {
+  background: var(--green);
+  color: #fff;
+  border-radius: 10px;
+  min-height: 44px;
+  transition: background-color 0.15s;
+}
+.finance-shell :is(button.bg-emerald-700, .button-primary):hover {
+  background: #086447;
+}
+.finance-shell :is(button.border, .button-secondary) {
+  border-radius: 10px;
+  min-height: 44px;
+}
+.cash-hero {
+  background: var(--soft);
+  border: 1px solid var(--line);
+}
+.overview-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "hero" "safe" "attention" "cashflow" "plan" "upcoming" "goals" "obligations" "health" "history" "notes";
+}
+.overview-hero {
+  grid-area: hero;
+}
+.overview-safe {
+  grid-area: safe;
+}
+.overview-obligations {
+  grid-area: obligations;
+}
+.overview-attention {
+  grid-area: attention;
+}
+.overview-cashflow {
+  grid-area: cashflow;
+}
+.overview-plan {
+  grid-area: plan;
+}
+.overview-upcoming {
+  grid-area: upcoming;
+}
+.overview-goals {
+  grid-area: goals;
+}
+.overview-health {
+  grid-area: health;
+}
+.overview-history {
+  grid-area: history;
+}
+.overview-notes {
+  grid-area: notes;
+}
+@media (min-width: 768px) {
+  .overview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas: "hero hero" "safe obligations" "attention cashflow" "plan upcoming" "goals health" "history notes";
+  }
+}
+@media (min-width: 1200px) {
+  .overview-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas: "hero hero safe" "hero hero obligations" "attention cashflow cashflow" "plan plan upcoming" "goals health health" "history notes notes";
+  }
+}
+.finance-shell .muted-record {
+  background: var(--soft);
+}
+.editorial-tabs > button[aria-pressed] {
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  min-height: 44px;
+  background: transparent;
+}
+.editorial-tabs > button[aria-pressed="true"] {
+  border-bottom-color: var(--green);
+  color: var(--green);
+}
+.finance-shell .bg-emerald-600 {
+  background: var(--green);
+}
+[role="dialog"] {
+  border: 1px solid var(--line);
 }

@@ -41,16 +41,18 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
               Build toward the things that matter.
             </p>
           </div>
-          <DialogTrigger asChild>
-            <button
-              type="button"
-              className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
-            >
-              + New Goal
-            </button>
-          </DialogTrigger>
+          {goals.length > 0 && (
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+              >
+                + New Goal
+              </button>
+            </DialogTrigger>
+          )}
         </header>
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        <div className="mt-8 flex flex-wrap items-end gap-x-10 gap-y-5 border-y py-5">
           <Metric label="Active Goals" value={active.length} />
           <Metric
             label="Completed Goals"
@@ -65,7 +67,7 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
             money
           />
         </div>
-        <div className="mt-6 grid gap-5 md:grid-cols-2">
+        <div className="mt-8 grid gap-5 md:grid-cols-2">
           {goals.map((g) => (
             <GoalCard key={g.id} goal={g} />
           ))}
@@ -75,7 +77,13 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
             <EmptyState
               title="No goals yet"
               description="Create a financial target such as an emergency fund or major purchase."
-            />
+            >
+              <DialogTrigger asChild>
+                <button type="button" className="button-primary">
+                  + New Goal
+                </button>
+              </DialogTrigger>
+            </EmptyState>
           </div>
         )}
         <DialogContent>
@@ -94,7 +102,7 @@ function GoalCard({ goal }: { goal: Goal }) {
   const p = done ? 100 : progressPercent(goal.currentAmount, goal.targetAmount);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <article className={`panel ${done ? "muted-record" : ""}`}>
+      <article className={`panel flex flex-col ${done ? "muted-record" : ""}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <h2 className="text-lg font-semibold">{goal.name}</h2>
           <StatusBadge
@@ -105,39 +113,48 @@ function GoalCard({ goal }: { goal: Goal }) {
               : `${goal.priority === 3 ? "High" : goal.priority === 2 ? "Medium" : goal.priority === 1 ? "Low" : goal.priority} Priority`}
           </StatusBadge>
         </div>
-        <p className="mt-6 money">{rupiah(goal.currentAmount)}</p>
-        <p className="text-sm text-slate-500">of {rupiah(goal.targetAmount)}</p>
-        <div className="mt-4 h-2 rounded bg-slate-100">
-          <div
-            className="h-full rounded bg-emerald-600"
-            style={{ width: `${p}%` }}
-          />
+        <p className="mt-8 hero-amount">{rupiah(goal.currentAmount)}</p>
+        <p className="mt-2 text-sm text-slate-500">
+          of {rupiah(goal.targetAmount)}
+        </p>
+        <div className="mt-7 flex items-center justify-between gap-3 text-sm">
+          <span className="text-muted">
+            {done ? "Target reached" : "Saved toward your goal"}
+          </span>
+          <strong>{p}%</strong>
         </div>
-        <p className="mt-2 text-sm">
-          {p}% ·{" "}
+        <progress
+          aria-label={`${goal.name} progress`}
+          className="mt-3 h-2.5 w-full"
+          value={p}
+          max={100}
+        />
+        <p className="mt-4 text-sm">
           {rupiah(
             done ? 0 : Math.max(goal.targetAmount - goal.currentAmount, 0),
           )}{" "}
-          remaining
+          to go
         </p>
         {goal.targetDate && (
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-sm text-slate-500">
             Target {formatDate(goal.targetDate)}
           </p>
         )}
-        <div className="mt-5 flex gap-3">
-          {!done && (
-            <DialogTrigger asChild>
-              <button type="button" className="button-primary">
-                Add Progress
-              </button>
-            </DialogTrigger>
-          )}
-          <DeleteConfirmation
-            id={goal.id}
-            name={goal.name}
-            action={deleteGoal}
-          />
+        <div className="mt-auto pt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-5">
+            {!done && (
+              <DialogTrigger asChild>
+                <button type="button" className="button-primary">
+                  Add Progress
+                </button>
+              </DialogTrigger>
+            )}
+            <DeleteConfirmation
+              id={goal.id}
+              name={goal.name}
+              action={deleteGoal}
+            />
+          </div>
         </div>
         <DialogContent>
           <DialogHeader>
@@ -251,7 +268,7 @@ function Metric({
   money?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border bg-white p-5">
+    <div className="min-w-0">
       <p className="text-sm text-slate-500">{label}</p>
       <strong className="mt-2 block text-2xl">
         {money ? rupiah(value) : value}

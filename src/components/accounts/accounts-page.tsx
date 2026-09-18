@@ -54,27 +54,34 @@ export function AccountsPage({ accounts }: { accounts: Account[] }) {
         </div>
         <AccountDialog />
       </header>
-      <p className="mt-4 text-sm text-slate-500">
-        Balances are maintained manually. Recording income, expenses, or
-        payments does not change these balances.
-      </p>
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <Metric
-          label="Liquid Cash"
-          value={rupiah(liquid)}
-          caption="Active bank, cash and e-wallet accounts"
-        />
-        <Metric
-          label="Investments"
-          value={rupiah(investments)}
-          caption="Active investment accounts; excluded from liquid cash"
-        />
-        <Metric
-          label="Active Accounts"
-          value={String(accounts.filter((account) => account.isActive).length)}
-          caption={`${accounts.length} accounts recorded, including inactive`}
-        />
+      <div className="mt-8 grid overflow-hidden rounded-2xl border bg-white lg:grid-cols-[1.6fr_1fr]">
+        <section className="cash-hero border-0 p-6 md:p-8">
+          <p className="eyebrow">Your everyday money</p>
+          <h2 className="mt-6 text-sm text-muted">Liquid Cash</h2>
+          <p className="mt-2 hero-amount">{rupiah(liquid)}</p>
+          <p className="mt-3 text-sm text-muted">
+            Active bank, cash and e-wallet accounts
+          </p>
+        </section>
+        <div className="divide-y px-6">
+          <Metric
+            label="Investments"
+            value={rupiah(investments)}
+            caption="Active investment accounts; excluded from liquid cash"
+          />
+          <Metric
+            label="Active Accounts"
+            value={String(
+              accounts.filter((account) => account.isActive).length,
+            )}
+            caption={`${accounts.length} accounts recorded, including inactive`}
+          />
+        </div>
       </div>
+      <p className="mt-4 text-sm text-slate-500">
+        Updated manually. Income, expenses and payments do not change account
+        balances.
+      </p>
       {accounts.length ? (
         <div className="mt-7 space-y-6">
           {[
@@ -96,14 +103,15 @@ export function AccountsPage({ accounts }: { accounts: Account[] }) {
             (group) =>
               accounts.some((a) => group.types.includes(a.type)) && (
                 <section key={group.title}>
-                  <h2 className="mb-3 text-lg font-semibold">{group.title}</h2>
+                  <h2 className="eyebrow mb-3">{group.title}</h2>
                   <div className="overflow-hidden rounded-2xl border bg-white divide-y">
                     {accounts
                       .filter((account) => group.types.includes(account.type))
                       .map((account) => (
                         <article
                           key={account.id}
-                          className={`min-w-0 p-5 md:grid md:grid-cols-[1fr_auto] md:gap-x-8 ${account.isActive ? "" : "muted-record"}`}
+                          data-account-type={account.type}
+                          className={`min-w-0 p-5 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-x-8 ${account.isActive ? "" : "muted-record"}`}
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <h3 className="text-base font-semibold">
@@ -115,21 +123,19 @@ export function AccountsPage({ accounts }: { accounts: Account[] }) {
                               {account.isActive ? "Active" : "Inactive"}
                             </StatusBadge>
                           </div>
-                          <p className="mt-1 text-sm text-slate-500 md:col-start-1">
+                          <p className="mt-1 text-sm text-slate-500 lg:col-start-1">
                             {accountTypeLabel(account.type)}
+                            {account.institution
+                              ? ` · ${account.institution}`
+                              : ""}
                           </p>
-                          {account.institution && (
-                            <p className="mt-1 break-words text-sm text-slate-500 md:col-start-1">
-                              {account.institution}
-                            </p>
-                          )}
-                          <p className="mt-5 text-xs text-slate-500 md:col-start-2 md:row-start-1 md:mt-0 md:text-right">
+                          <p className="mt-5 text-xs text-slate-500 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:text-right">
                             Current Balance
                           </p>
-                          <p className="mt-1 money md:col-start-2 md:row-start-2 md:text-right">
+                          <p className="mt-1 money lg:col-start-2 lg:row-start-2 lg:text-right">
                             {rupiah(account.balance)}
                           </p>
-                          <div className="mt-4 flex flex-wrap items-center gap-3 md:col-span-2 md:justify-end">
+                          <div className="mt-4 flex flex-wrap items-center gap-3 lg:col-span-2 lg:justify-end">
                             <BalanceDialog account={account} />
                             <AccountDialog account={account} />
                             {account.isActive && (
@@ -340,7 +346,7 @@ function Metric({
   caption: string;
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border bg-white p-5">
+    <section className="min-w-0 py-6">
       <h2 className="text-sm text-slate-500">{label}</h2>
       <p className="mt-2 text-2xl font-semibold">{value}</p>
       <p className="mt-2 text-xs text-slate-500">{caption}</p>

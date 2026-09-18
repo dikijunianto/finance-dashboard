@@ -214,14 +214,12 @@ try {
     );
     await go("/accounts");
   }
-  const bankCard = page
-    .getByRole("article")
-    .filter({
-      has: page.getByRole("heading", {
-        name: prefix + " account bank",
-        exact: true,
-      }),
-    });
+  const bankCard = page.getByRole("article").filter({
+    has: page.getByRole("heading", {
+      name: prefix + " account bank",
+      exact: true,
+    }),
+  });
   const readBank = async () =>
     (
       await sql`select * from finance_accounts where name=${prefix + " account bank"}`
@@ -279,7 +277,9 @@ try {
   );
   await go("/accounts");
   await bankCard.getByRole("button", { name: "Edit", exact: true }).click();
-  await dialog().getByRole("combobox", { name: /^Status/ }).selectOption("true");
+  await dialog()
+    .getByRole("combobox", { name: /^Status/ })
+    .selectOption("true");
   await save("Save Changes");
   assert.equal((await readBank()).is_active, true);
   for (const width of [1440, 375]) {
@@ -421,6 +421,10 @@ try {
   );
   await fill({ "Remaining amount": 500000 });
   await save("Save Debt");
+  await page.screenshot({
+    path: join(snapshots, "debt-active-1440.png"),
+    fullPage: true,
+  });
   let debtCard = page
     .getByRole("article")
     .filter({ has: page.getByText(prefix + " debt", { exact: true }) });
@@ -462,6 +466,10 @@ try {
     0,
   );
   assert((await debtCard.innerText()).includes("100% paid"));
+  await page.screenshot({
+    path: join(snapshots, "debt-paid-1440.png"),
+    fullPage: true,
+  });
   assert.equal(
     (
       await sql`select remaining_amount from debts where name=${prefix + " debt"}`
@@ -502,6 +510,10 @@ try {
     "Already saved": 0,
   });
   await save("Create Goal");
+  await page.screenshot({
+    path: join(snapshots, "goal-active-1440.png"),
+    fullPage: true,
+  });
   let goalCard = page
     .getByRole("article")
     .filter({ has: page.getByText(prefix + " goal", { exact: true }) });
@@ -563,7 +575,7 @@ try {
   await page.goto(base + "/payday");
   await page.waitForURL(base + "/budget");
 
-  for (const width of [1440, 768, 375]) {
+  for (const width of [1440, 1200, 1024, 768, 375]) {
     await page.setViewportSize({ width, height: 900 });
     for (const route of [
       "/dashboard",
@@ -587,11 +599,45 @@ try {
         exact: true,
       });
       await nav.getByRole("link", { name: "Cash Flow", exact: true }).waitFor();
-      if (route === "/dashboard")
-        await page.screenshot({
-          path: join(snapshots, "overview-" + width + ".png"),
-          fullPage: true,
-        });
+      if (route === "/dashboard") {
+        const hero = await page.locator(".overview-hero").boundingBox();
+        const safe = await page.locator(".overview-safe").boundingBox();
+        if (width >= 1200) {
+          assert(hero.width > safe.width * 1.8, "Hero dominates desktop bento");
+          assert(
+            hero.height > safe.height,
+            "Hero spans the smaller money panels",
+          );
+        }
+        if (width === 375) {
+          let previousBottom = 0;
+          for (const section of [
+            "hero",
+            "safe",
+            "attention",
+            "cashflow",
+            "plan",
+            "upcoming",
+            "goals",
+          ]) {
+            const box = await page
+              .locator(".overview-" + section)
+              .boundingBox();
+            assert(box.y >= previousBottom, "Mobile reading order: " + section);
+            previousBottom = box.y + box.height;
+          }
+        }
+      }
+      await page.screenshot({
+        path: join(
+          snapshots,
+          (route === "/dashboard" ? "overview" : route.slice(1)) +
+            "-" +
+            width +
+            ".png",
+        ),
+        fullPage: true,
+      });
     }
     await go("/bills");
     await button("Debt").click();

@@ -8,8 +8,8 @@ export function StatusBadge({
   tone?: "neutral" | "good" | "attention" | "danger";
 }) {
   const colors = {
-    neutral: "bg-slate-100 text-slate-600",
-    good: "bg-emerald-50 text-emerald-800",
+    neutral: "bg-soft text-muted",
+    good: "bg-brand-soft text-brand",
     attention: "bg-amber-50 text-amber-800",
     danger: "bg-rose-50 text-rose-700",
   };

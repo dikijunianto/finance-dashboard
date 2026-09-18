@@ -57,17 +57,19 @@ export function CashFlowPage({ items, month }: { items: Tx[]; month: string }) {
               Track money coming in and going out. · {formatMonth(month)}
             </p>
           </div>
-          <DialogTrigger asChild>
-            <button
-              type="button"
-              className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              <Plus className="mr-1 inline" size={17} />
-              Add Transaction
-            </button>
-          </DialogTrigger>
+          {items.length > 0 && (
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                <Plus className="mr-1 inline" size={17} />
+                Add Transaction
+              </button>
+            </DialogTrigger>
+          )}
         </header>
-        <div className="mt-7 grid gap-4 sm:grid-cols-3">
+        <div className="summary-strip mt-8 sm:grid-cols-3">
           <Stat label="Income" value={income} tone="green" />
           <Stat label="Expenses" value={expense} tone="neutral" />
           <Stat
@@ -76,10 +78,10 @@ export function CashFlowPage({ items, month }: { items: Tx[]; month: string }) {
             tone={income - expense >= 0 ? "green" : "red"}
           />
         </div>
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b p-5">
+        <section className="mt-8">
+          <div className="flex items-center justify-between border-b pb-5">
             <div>
-              <h2 className="text-lg font-semibold">Transactions</h2>
+              <h2 className="text-xl font-semibold">Cash Flow Activity</h2>
               <p className="text-sm text-slate-500">
                 All recorded income and expenses; summaries show the current
                 month.
@@ -90,62 +92,75 @@ export function CashFlowPage({ items, month }: { items: Tx[]; month: string }) {
             Object.entries(Object.groupBy(items, (tx) => tx.date))
               .sort(([a], [b]) => b.localeCompare(a))
               .map(([date, transactions]) => (
-                <div key={date}>
-                  <h3 className="border-b bg-slate-50/70 px-5 py-3 text-xs font-semibold text-slate-500">
+                <div
+                  key={date}
+                  className="mt-5 grid gap-3 xl:grid-cols-[100px_minmax(0,1fr)]"
+                >
+                  <h3 className="pt-4 text-sm font-medium text-muted">
                     {formatDate(date)}
                   </h3>
-                  {transactions!.map((tx) => (
-                    <div
-                      key={tx.type + tx.id}
-                      className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 last:border-0"
-                    >
-                      <div className="flex gap-3">
-                        <span
-                          className={`grid size-9 shrink-0 place-items-center rounded-xl ${tx.type === "income" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-                        >
-                          {tx.type === "income" ? (
-                            <TrendingUp size={18} />
-                          ) : (
-                            <TrendingDown size={18} />
-                          )}
-                        </span>
-                        <div>
-                          <strong className="text-sm">{tx.label}</strong>
-                          <p className="text-xs text-slate-500">
-                            {tx.type === "income" ? "Income" : "Expense"} ·{" "}
-                            {formatDate(tx.date)}
-                            {tx.notes ? ` · ${tx.notes}` : ""}
-                          </p>
+                  <div className="overflow-hidden rounded-2xl border bg-white">
+                    {transactions!.map((tx) => (
+                      <div
+                        key={tx.type + tx.id}
+                        className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 last:border-0"
+                      >
+                        <div className="flex min-w-0 gap-3">
+                          <span
+                            className={`grid size-9 shrink-0 place-items-center rounded-xl ${tx.type === "income" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                          >
+                            {tx.type === "income" ? (
+                              <TrendingUp size={18} />
+                            ) : (
+                              <TrendingDown size={18} />
+                            )}
+                          </span>
+                          <div>
+                            <strong className="text-base">{tx.label}</strong>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {tx.type === "income" ? "Income" : "Expense"} ·{" "}
+                              {formatDate(tx.date)}
+                              {tx.notes ? ` · ${tx.notes}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="ml-auto flex flex-wrap items-center gap-3">
+                          <strong
+                            className={
+                              tx.type === "income"
+                                ? "text-emerald-700"
+                                : "text-slate-700"
+                            }
+                          >
+                            {tx.type === "income" ? "+ " : "- "}
+                            {rupiah(tx.amount)}
+                          </strong>
+                          <DeleteConfirmation
+                            id={tx.id}
+                            name={tx.label}
+                            action={
+                              tx.type === "income"
+                                ? deleteIncome
+                                : deleteExpense
+                            }
+                          />
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <strong
-                          className={
-                            tx.type === "income"
-                              ? "text-emerald-700"
-                              : "text-slate-700"
-                          }
-                        >
-                          {tx.type === "income" ? "+ " : "- "}
-                          {rupiah(tx.amount)}
-                        </strong>
-                        <DeleteConfirmation
-                          id={tx.id}
-                          name={tx.label}
-                          action={
-                            tx.type === "income" ? deleteIncome : deleteExpense
-                          }
-                        />
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               ))
           ) : (
             <EmptyState
               title="No transactions yet"
               description="Record income or expenses to understand where your money goes."
-            />
+            >
+              <DialogTrigger asChild>
+                <button type="button" className="button-primary">
+                  Add Transaction
+                </button>
+              </DialogTrigger>
+            </EmptyState>
           )}
         </section>
         <DialogContent>
@@ -238,7 +253,9 @@ function Stat({
   tone: "green" | "red" | "neutral";
 }) {
   return (
-    <section className="panel">
+    <section
+      className={`summary-cell ${label === "Net Cash Flow" ? "bg-soft" : ""}`}
+    >
       <p className="text-sm text-slate-500">{label}</p>
       <strong
         className={`mt-2 block money ${tone === "green" ? "text-emerald-800" : tone === "red" ? "text-rose-700" : "text-slate-800"}`}

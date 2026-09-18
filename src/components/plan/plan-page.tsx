@@ -38,86 +38,113 @@ export function PlanPage({
       <div className="page">
         <h1 className="text-3xl font-semibold">Plan</h1>
         <p className="mt-2 text-slate-600">
-          Allocate your income before spending it. · {formatMonth(month)}
+          Give every Rupiah a purpose before spending it. · {formatMonth(month)}
         </p>
-        <div className="mt-6 grid gap-5 lg:grid-cols-2">
-          <section className="panel">
-            <p className="eyebrow">{formatMonth(month)}</p>
-            <p className="mt-4 text-sm text-slate-500">Monthly Income</p>
-            <strong className="mt-2 block money">{rupiah(income)}</strong>
-            {!income && (
-              <p className="mt-2 text-sm text-slate-500">
-                Add income in Cash Flow before creating a plan.
+        <div className="mt-8 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
+          <div className="space-y-5">
+            <section className="cash-hero rounded-2xl p-6 md:p-7">
+              <p className="eyebrow">{formatMonth(month)}</p>
+              <p className="mt-4 text-sm text-slate-500">Monthly Income</p>
+              <strong className="mt-3 block hero-amount">
+                {rupiah(income)}
+              </strong>
+              {!income && (
+                <p className="mt-2 text-sm text-slate-500">
+                  Add income in Cash Flow before creating a plan.
+                </p>
+              )}
+            </section>
+            <section className="panel">
+              <p className="text-3xl font-semibold tracking-tight">
+                {income > 0
+                  ? `${Math.round((allocated / income) * 100)}%`
+                  : "—"}
+                <span className="ml-2 text-base font-normal text-muted">
+                  allocated
+                </span>
               </p>
-            )}
-          </section>
+              <progress
+                aria-label="Monthly income allocated"
+                className="my-5 h-3 w-full"
+                value={Math.max(0, Math.min(allocated, Math.max(0, income)))}
+                max={Math.max(1, income)}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-slate-500">Remaining</p>
+                <StatusBadge
+                  tone={
+                    remaining === 0
+                      ? "good"
+                      : remaining > 0
+                        ? "attention"
+                        : "danger"
+                  }
+                >
+                  {status}
+                </StatusBadge>
+              </div>
+              <p className="mt-3 money">{rupiah(remaining)}</p>
+              <p className="mt-2 text-sm text-slate-500">
+                {remaining > 0
+                  ? "Still needs a purpose."
+                  : remaining < 0
+                    ? "Your allocation exceeds recorded income."
+                    : "Every recorded Rupiah has a purpose."}
+              </p>
+            </section>
+          </div>
           <section className="panel">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-slate-500">Remaining</p>
-              <StatusBadge
-                tone={
-                  remaining === 0
-                    ? "good"
-                    : remaining > 0
-                      ? "attention"
-                      : "danger"
-                }
-              >
-                {status}
-              </StatusBadge>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Monthly Allocation</h2>
+              <DialogTrigger asChild>
+                <button type="button" className="button-primary">
+                  Edit Plan
+                </button>
+              </DialogTrigger>
             </div>
-            <p className="mt-3 money">{rupiah(remaining)}</p>
-            <p className="mt-2 text-sm text-slate-500">
-              {remaining > 0
-                ? "Still needs a purpose."
-                : remaining < 0
-                  ? "Your allocation exceeds recorded income."
-                  : "Every recorded Rupiah has a purpose."}
-            </p>
+            <p className="mt-2 text-sm text-muted">Your allocation board</p>
+            <div className="mt-6 divide-y">
+              {Object.entries({
+                ...Object.fromEntries(
+                  Object.keys(values).map((key) => [key, key]),
+                ),
+                ...labels,
+              }).map(([key, label]) => {
+                const amount = values[key] ?? 0;
+                const pct = income ? Math.round((amount / income) * 100) : 0;
+                return (
+                  <div
+                    key={key}
+                    className="grid gap-3 py-5 first:pt-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:gap-x-6"
+                  >
+                    <div>
+                      <p className="text-sm text-muted">{label}</p>
+                      <p className="mt-1 text-xl font-semibold">
+                        {rupiah(amount)}
+                      </p>
+                    </div>
+                    <div className="self-center">
+                      <p className="mb-2 text-right text-sm font-medium">
+                        {pct}%
+                      </p>
+                      <progress
+                        aria-label={`${label} allocation`}
+                        className="h-2 w-full"
+                        value={Math.max(0, Math.min(pct, 100))}
+                        max={100}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-7 grid gap-3 border-t pt-5 sm:grid-cols-3">
+              <Metric label="Total Income" value={income} />
+              <Metric label="Allocated" value={allocated} />
+              <Metric label={`Remaining · ${status}`} value={remaining} />
+            </div>
           </section>
         </div>
-        <section className="mt-6 rounded-2xl border bg-white p-6">
-          <div className="flex justify-between">
-            <h2 className="text-lg font-semibold">Monthly Allocation</h2>
-            <DialogTrigger asChild>
-              <button type="button" className="button-primary">
-                Edit Plan
-              </button>
-            </DialogTrigger>
-          </div>
-          <div className="mt-5 grid gap-6 lg:grid-cols-2 lg:gap-x-10">
-            {Object.entries({
-              ...Object.fromEntries(
-                Object.keys(values).map((key) => [key, key]),
-              ),
-              ...labels,
-            }).map(([key, label]) => {
-              const amount = values[key] ?? 0;
-              const pct = income ? Math.round((amount / income) * 100) : 0;
-              return (
-                <div key={key}>
-                  <div className="flex flex-wrap justify-between gap-2 text-sm">
-                    <span>{label}</span>
-                    <strong>
-                      {rupiah(amount)} · {pct}%
-                    </strong>
-                  </div>
-                  <div className="mt-2 h-2 rounded bg-slate-100">
-                    <div
-                      className="h-full rounded bg-emerald-600"
-                      style={{ width: `${Math.max(0, Math.min(pct, 100))}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-7 grid gap-3 border-t pt-5 sm:grid-cols-3">
-            <Metric label="Total Income" value={income} />
-            <Metric label="Allocated" value={allocated} />
-            <Metric label={`Remaining · ${status}`} value={remaining} />
-          </div>
-        </section>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Plan</DialogTitle>
