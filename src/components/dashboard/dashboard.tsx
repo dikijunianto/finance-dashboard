@@ -111,12 +111,12 @@ export function Dashboard({ data }: { data: Data }) {
           </div>
           <div className="mt-8 flex flex-wrap items-end justify-between gap-5 border-t border-ink/10 pt-5">
             <div>
-              <p className="text-sm text-muted">Monthly Surplus</p>
+              <p className="text-sm text-muted">Net Cash Flow</p>
               <p className="mt-1 text-2xl font-semibold">
                 {rupiah(data.surplus)}
               </p>
               <p className="mt-1 text-xs text-muted">
-                Income less recorded expenses
+                Income less spending and debt payments
               </p>
             </div>
             <Link href="/accounts" className="button-primary w-fit">
@@ -197,7 +197,7 @@ export function Dashboard({ data }: { data: Data }) {
                 />
                 <Bar
                   dataKey="expenses"
-                  name="Expenses"
+                  name="Cash Outflow"
                   fill="var(--muted)"
                   isAnimationActive={false}
                 />
@@ -208,7 +208,7 @@ export function Dashboard({ data }: { data: Data }) {
               <div className="grid gap-5 sm:grid-cols-3">
                 {[
                   ["Income", data.cashFlow[0].income],
-                  ["Expenses", data.cashFlow[0].expenses],
+                  ["Cash Outflow", data.cashFlow[0].expenses],
                   ["Net Cash Flow", data.surplus],
                 ].map(([label, value]) => (
                   <div key={String(label)}>
@@ -257,7 +257,7 @@ export function Dashboard({ data }: { data: Data }) {
             />
             <div className="grid gap-4 sm:grid-cols-3">
               {[
-                ["Income", data.plan.income],
+                ["Funding", data.plan.income],
                 ["Allocated", data.plan.allocated],
                 ["Remaining", data.plan.remaining],
               ].map(([label, value]) => (

@@ -807,6 +807,7 @@ try {
     false,
   );
   assert.equal(await amountAt(bank), 9150000);
+  const beforeReconciliationReport = await getMonthlyReport();
   const reconcile = form({ id: bank, balance: 10000000 });
   assert.equal((await accounts.updateAccountBalance(reconcile)).success, true);
   assert.equal((await accounts.updateAccountBalance(reconcile)).success, true);
@@ -853,7 +854,7 @@ try {
   assert.equal(await amountAt(bank), beforePlanning);
   const afterAdjustmentReport = await getMonthlyReport();
   for (const key of ["income", "expenses", "net"])
-    assert.equal(afterAdjustmentReport[key], beforeTransferReport[key]);
+    assert.equal(afterAdjustmentReport[key], beforeReconciliationReport[key]);
   // Amount edits and account changes reverse the previous linked effect exactly.
   assert.equal(
     (
@@ -1168,6 +1169,195 @@ try {
   await sql`delete from finance_accounts where id=${paymentAccountId}`;
   console.log(
     "PASS v1.1: opening, income/expense edits/deletes, legacy conversion, transfers/reverts, payment retries/refunds, reconciliation, concurrency, rollback, ledger sums and read-only planning/report semantics.",
+  );
+  // v1.2: actual cash flow and planning funding are intentionally independent.
+  const { getPlanFunding } = await import("../src/lib/plan-funding.ts");
+  const september = new Date("2026-09-15T12:00:00+07:00"),
+    october = new Date("2026-10-15T12:00:00+07:00");
+  const septBefore = await getMonthlyReport(september),
+    octBefore = await getMonthlyReport(october);
+  const fundingBefore = await getPlanFunding("2026-10-01");
+  await accounts.createAccount(
+    form({ name: prefix + " v12 bank", type: "bank", balance: 0 }),
+  );
+  const v12Bank = (
+    await sql`select id from finance_accounts where name=${prefix + " v12 bank"}`
+  )[0].id;
+  const v12SalaryForm = form({
+    accountId: v12Bank,
+    label: prefix + " v12 salary",
+    amount: 10000000,
+    date: "2026-09-30",
+    fundingMonth: "2026-10-01",
+  });
+  assert.equal((await cash.createIncome(v12SalaryForm)).success, true);
+  const v12Salary = (
+    await sql`select id from income where source=${prefix + " v12 salary"}`
+  )[0].id;
+  assert.equal(
+    (await getMonthlyReport(september)).income,
+    septBefore.income + 10000000,
+  );
+  assert.equal((await getMonthlyReport(october)).income, octBefore.income);
+  assert.equal(
+    (await getPlanFunding("2026-10-01")).amount,
+    fundingBefore.amount + 10000000,
+  );
+  const ledgerBeforeFunding =
+    await sql`select * from account_movements where account_id=${v12Bank} order by id`;
+  const fundingEdit = form({
+    id: v12Salary,
+    accountId: v12Bank,
+    label: prefix + " v12 salary",
+    amount: 10000000,
+    date: "2026-09-30",
+    fundingMonth: "2026-11-01",
+  });
+  assert.equal((await cash.updateIncome(fundingEdit)).success, true);
+  assert.equal((await cash.updateIncome(fundingEdit)).success, true);
+  assert.deepEqual(
+    await sql`select * from account_movements where account_id=${v12Bank} order by id`,
+    ledgerBeforeFunding,
+  );
+  assert.equal(await amountAt(v12Bank), 10000000);
+  assert.equal(
+    (await getPlanFunding("2026-10-01")).amount,
+    fundingBefore.amount,
+  );
+  assert.equal(
+    (await getPlanFunding("2026-11-01")).sources.find((x) => x.id === v12Salary)
+      .receivedAt,
+    "2026-09-30",
+  );
+  assert.equal(
+    (
+      await cash.updateIncome(
+        form({
+          id: v12Salary,
+          accountId: v12Bank,
+          label: "bad",
+          amount: 10000000,
+          date: "2026-09-30",
+          fundingMonth: "2026-11-15",
+        }),
+      )
+    ).success,
+    false,
+  );
+  const [unlinked] =
+    await sql`insert into income(user_id,source,amount,received_at) values(${owner},${prefix + " v12 legacy"},2000000,'2026-09-28') returning id`;
+  assert.equal(
+    (
+      await cash.updateIncome(
+        form({
+          id: unlinked.id,
+          accountId: "",
+          label: prefix + " v12 legacy",
+          amount: 2000000,
+          date: "2026-09-28",
+          fundingMonth: "2026-09-01",
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(v12Bank), 10000000);
+  assert.deepEqual(
+    await sql`select * from account_movements where account_id=${v12Bank} order by id`,
+    ledgerBeforeFunding,
+  );
+  await cash.deleteIncome(form({ id: unlinked.id }));
+  assert.equal(
+    (
+      await cash.createExpense(
+        form({
+          accountId: v12Bank,
+          label: prefix + " v12 expense",
+          amount: 500000,
+          date: "2026-10-10",
+        }),
+      )
+    ).success,
+    true,
+  );
+  await bills.createBill(
+    form({
+      name: prefix + " v12 internet",
+      amount: 350000,
+      category: "utilities",
+      dueDay: 15,
+    }),
+  );
+  const v12Bill = (
+    await sql`select id from bills where name=${prefix + " v12 internet"}`
+  )[0].id;
+  const payBill = form({ id: v12Bill, accountId: v12Bank, date: "2026-10-10" });
+  assert.equal((await bills.markBillPaid(payBill)).success, true);
+  assert.equal((await bills.markBillPaid(payBill)).success, true);
+  await bills.createDebt(
+    form({
+      name: prefix + " v12 debt",
+      lender: "QA",
+      originalAmount: 2000000,
+      remainingAmount: 2000000,
+      installmentAmount: 1000000,
+      dueDay: 15,
+    }),
+  );
+  const v12Debt = (
+    await sql`select id from debts where name=${prefix + " v12 debt"}`
+  )[0].id;
+  assert.equal(
+    (
+      await bills.recordDebtPayment(
+        form({
+          id: v12Debt,
+          accountId: v12Bank,
+          amount: 1000000,
+          date: "2026-10-10",
+        }),
+      )
+    ).success,
+    true,
+  );
+  const actuals = await getMonthlyReport(october);
+  assert.equal(actuals.spending - octBefore.spending, 850000);
+  assert.equal(actuals.cashOutflow - octBefore.cashOutflow, 1850000);
+  assert.equal(actuals.net - octBefore.net, -1850000);
+  assert.equal(actuals.debtPaid - octBefore.debtPaid, 1000000);
+  assert.equal(await amountAt(v12Bank), 8150000);
+  await accounts.createAccount(
+    form({ name: prefix + " v12 wallet", type: "e_wallet", balance: 0 }),
+  );
+  const v12Wallet = (
+    await sql`select id from finance_accounts where name=${prefix + " v12 wallet"}`
+  )[0].id;
+  await cash.createTransfer(
+    form({
+      fromAccountId: v12Bank,
+      toAccountId: v12Wallet,
+      amount: 500000,
+      date: "2026-10-10",
+    }),
+  );
+  await accounts.updateAccountBalance(form({ id: v12Bank, balance: 7625000 }));
+  const excluded = await getMonthlyReport(october);
+  for (const key of ["income", "spending", "cashOutflow", "net"])
+    assert.equal(excluded[key], actuals[key]);
+  assert.equal(
+    (await getDashboardData()).surplus,
+    (await getMonthlyReport()).net,
+  );
+  await bills.deleteBill(form({ id: v12Bill }));
+  await bills.deleteDebt(form({ id: v12Debt }));
+  for (const id of [v12Bank, v12Wallet]) {
+    await sql`delete from income where account_id=${id}`;
+    await sql`delete from expenses where account_id=${id}`;
+    await sql`delete from account_movements where account_id=${id}`;
+    await sql`delete from finance_accounts where id=${id}`;
+  }
+  console.log(
+    "PASS v1.2: bill spending once, debt outflow not spending, actual-date reports vs independent funding, funding-only edits/retries without movements, legacy override, transfer/adjustment exclusion, Overview agreement.",
   );
   const { db } = await import("../src/db/index.ts");
   await db.$client.end();

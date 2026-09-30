@@ -29,6 +29,13 @@ const record = z.object({
 const expenseInput = record.extend({
   category: z.string().trim().min(1).max(120),
 });
+const incomeInput = record.extend({
+  fundingMonth: z
+    .string()
+    .date()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])-01$/)
+    .optional(),
+});
 function done() {
   for (const route of [
     "/cash-flow",
@@ -41,7 +48,7 @@ function done() {
 }
 export async function createIncome(form: FormData) {
   return mutationResult(async () => {
-    const d = record.parse(Object.fromEntries(form)),
+    const d = incomeInput.parse(Object.fromEntries(form)),
       userId = await requireOwner(),
       hash = requestHash("income", d);
     await db.transaction(async (tx) => {
@@ -56,6 +63,7 @@ export async function createIncome(form: FormData) {
           source: d.label,
           amount: d.amount,
           receivedAt: d.date,
+          fundingMonth: d.fundingMonth ?? d.date.slice(0, 7) + "-01",
           notes: d.notes || null,
         })
         .returning();
@@ -112,8 +120,11 @@ export async function createExpense(form: FormData) {
 }
 export async function updateIncome(form: FormData) {
   return mutationResult(async () => {
-    const d = record
-        .extend({ id: z.string().uuid() })
+    const d = incomeInput
+        .extend({
+          id: z.string().uuid(),
+          accountId: accountId.or(z.literal("")),
+        })
         .parse(Object.fromEntries(form)),
       userId = await requireOwner(),
       hash = requestHash("update_income", d);
@@ -125,6 +136,32 @@ export async function updateIncome(form: FormData) {
         .for("update");
       if (!old)
         throw new InputError("Transaction no longer exists. Refresh the page.");
+      // Funding/source/notes metadata does not move money. Preserve legacy unlinked state too.
+      if (
+        old.amount === d.amount &&
+        (old.accountId ?? "") === d.accountId &&
+        old.receivedAt === d.date
+      ) {
+        if (await wasApplied(tx, userId, d.requestId, hash)) return;
+        await tx
+          .update(income)
+          .set({
+            source: d.label,
+            receivedAt: d.date,
+            notes: d.notes || null,
+            fundingMonth:
+              d.fundingMonth ??
+              old.fundingMonth ??
+              old.receivedAt.slice(0, 7) + "-01",
+            updatedAt: new Date(),
+          })
+          .where(eq(income.id, d.id));
+        return;
+      }
+      if (!d.accountId)
+        throw new InputError(
+          "Select an account to change this legacy transaction's amount or date.",
+        );
       const rows = await sourceMovements(tx, userId, "income", d.id);
       await lockAccounts(tx, userId, [
         d.accountId,
@@ -147,6 +184,8 @@ export async function updateIncome(form: FormData) {
           source: d.label,
           amount: d.amount,
           receivedAt: d.date,
+          fundingMonth:
+            d.fundingMonth ?? old.fundingMonth ?? d.date.slice(0, 7) + "-01",
           notes: d.notes || null,
           updatedAt: new Date(),
         })

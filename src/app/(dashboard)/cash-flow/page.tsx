@@ -5,16 +5,29 @@ import {
   expenses,
   financeAccounts,
   income,
+  bills,
+  billPayments,
+  debts,
+  debtPayments,
 } from "@/db/schema";
 import {
   CashFlowPage,
   type ActivityItem,
 } from "@/components/cash-flow/cash-flow-page";
 import { requireOwner } from "@/lib/action-result";
-import { currentMonth } from "@/lib/dates";
+import { currentMonth, jakartaDate } from "@/lib/dates";
+import { getMonthlyReport } from "@/lib/reports/monthly-report";
 export default async function Page() {
   const userId = await requireOwner();
-  const [incomes, expenseRows, accounts, movements] = await Promise.all([
+  const [
+    incomes,
+    expenseRows,
+    accounts,
+    movements,
+    paidBills,
+    paidDebts,
+    summary,
+  ] = await Promise.all([
     db
       .select()
       .from(income)
@@ -34,6 +47,17 @@ export default async function Page() {
         desc(accountMovements.occurredAt),
         desc(accountMovements.createdAt),
       ),
+    db
+      .select({ payment: billPayments, name: bills.name })
+      .from(billPayments)
+      .innerJoin(bills, eq(bills.id, billPayments.billId))
+      .where(eq(billPayments.userId, userId)),
+    db
+      .select({ payment: debtPayments, name: debts.name })
+      .from(debtPayments)
+      .innerJoin(debts, eq(debts.id, debtPayments.debtId))
+      .where(eq(debtPayments.userId, userId)),
+    getMonthlyReport(),
   ]);
   const name = (id: string | null) =>
     accounts.find((a) => a.id === id)?.name ?? "Unlinked / legacy";
@@ -56,6 +80,7 @@ export default async function Page() {
       accountId: x.accountId,
       context: linked("income", x.id) ? name(x.accountId) : "Unlinked / legacy",
       linked: linked("income", x.id),
+      fundingMonth: x.fundingMonth ?? x.receivedAt.slice(0, 7) + "-01",
     })),
     ...expenseRows.map((x) => ({
       id: x.id,
@@ -70,6 +95,34 @@ export default async function Page() {
         ? name(x.accountId)
         : "Unlinked / legacy",
       linked: linked("expense", x.id),
+    })),
+    ...paidBills
+      .filter((x) => x.payment.status === "paid")
+      .map((x) => ({
+        id: x.payment.id,
+        label: x.name,
+        amount: -x.payment.amount,
+        date: x.payment.paidAt ? jakartaDate(x.payment.paidAt) : "",
+        notes: x.payment.paidAt
+          ? ""
+          : "Legacy payment — actual date not recorded.",
+        category: "Bill Payment",
+        type: "movement" as const,
+        accountId: x.payment.accountId,
+        context: name(x.payment.accountId),
+        linked: !!x.payment.accountId,
+      })),
+    ...paidDebts.map((x) => ({
+      id: x.payment.id,
+      label: x.name,
+      amount: -x.payment.amount,
+      date: x.payment.paidAt,
+      notes: x.payment.notes ?? "",
+      category: "Debt Payment",
+      type: "movement" as const,
+      accountId: x.payment.accountId,
+      context: name(x.payment.accountId),
+      linked: !!x.payment.accountId,
     })),
     ...movements
       .filter((m) => m.type === "transfer_out")
@@ -99,6 +152,12 @@ export default async function Page() {
         (m) =>
           !["income", "expense", "transfer_out", "transfer_in"].includes(
             m.type,
+          ) &&
+          !(
+            (m.type === "bill_payment" &&
+              paidBills.some((x) => x.payment.id === m.referenceId)) ||
+            (m.type === "debt_payment" &&
+              paidDebts.some((x) => x.payment.id === m.referenceId))
           ),
       )
       .map((m) => ({
@@ -107,7 +166,10 @@ export default async function Page() {
         amount: m.amount,
         date: m.occurredAt,
         notes: "",
-        category: m.type.replaceAll("_", " "),
+        category:
+          m.type === "adjustment"
+            ? "Balance Adjustment"
+            : m.type.replaceAll("_", " "),
         type: "movement" as const,
         accountId: m.accountId,
         context: name(m.accountId),
@@ -119,6 +181,7 @@ export default async function Page() {
       items={items}
       accounts={accounts}
       month={currentMonth().month}
+      summary={summary}
     />
   );
 }

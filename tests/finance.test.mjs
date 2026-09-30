@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { currentMonth, jakartaDate, billDueDate } from "../src/lib/dates.ts";
+import {
+  currentMonth,
+  jakartaDate,
+  billDueDate,
+  suggestedFundingMonth,
+  monthStart,
+} from "../src/lib/dates.ts";
 import {
   allocationTotals,
   calculateMonthlySurplus,
@@ -9,6 +15,20 @@ import {
   progressPercent,
 } from "../src/lib/finance/calculations.ts";
 import { rupiah } from "../src/lib/currency.ts";
+test("funding suggestions follow approved cutoff and never shift dates", () => {
+  for (const [date, expected] of [
+    ["2026-09-24", "2026-09-01"],
+    ["2026-09-25", "2026-10-01"],
+    ["2026-09-28", "2026-10-01"],
+    ["2026-09-30", "2026-10-01"],
+    ["2026-12-31", "2027-01-01"],
+    ["2028-02-29", "2028-03-01"],
+    ["2026-02-22", "2026-02-01"],
+  ])
+    assert.equal(suggestedFundingMonth(date), expected);
+  assert.equal(monthStart("2026-10"), "2026-10-01");
+  assert.equal(monthStart("2026-13"), null);
+});
 
 test("Jakarta month boundaries and real month-end due dates", () => {
   assert.equal(jakartaDate(new Date("2026-09-30T17:00:00Z")), "2026-10-01");

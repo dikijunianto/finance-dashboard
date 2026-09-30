@@ -5,11 +5,15 @@ export function AccountSelect({
   label,
   name = "accountId",
   defaultValue = "",
+  retainCurrent = false,
+  required = true,
 }: {
   accounts: AccountOption[];
   label: string;
   name?: string;
   defaultValue?: string;
+  retainCurrent?: boolean;
+  required?: boolean;
 }) {
   return (
     <label className="mt-4 block text-sm">
@@ -18,14 +22,14 @@ export function AccountSelect({
         aria-label={label}
         name={name}
         defaultValue={defaultValue}
-        required
+        required={required}
         className="mt-2 w-full rounded-xl border p-2.5"
       >
-        <option value="" disabled>
-          Select an account
+        <option value="" disabled={required}>
+          {required ? "Select an account" : "Keep unlinked (funding only)"}
         </option>
         {accounts
-          .filter((a) => a.isActive)
+          .filter((a) => a.isActive || (retainCurrent && a.id === defaultValue))
           .map((a) => (
             <option key={a.id} value={a.id}>
               {a.name}

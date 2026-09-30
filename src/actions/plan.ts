@@ -27,8 +27,14 @@ export async function updateMonthlyPlan(formData: FormData) {
   return mutationResult(async () => {
     const values = plan.parse(Object.fromEntries(formData));
     const userId = await requireOwner();
-    const { start: month, next } = currentMonth();
-    if (formData.get("month") !== month)
+    const { start: calendarMonth } = currentMonth();
+    const month = z
+      .string()
+      .date()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])-01$/)
+      .parse(formData.get("month"));
+    const { next } = currentMonth(new Date(month + "T12:00:00+07:00"));
+    if ((formData.get("calendarMonth") ?? month) !== calendarMonth)
       throw new InputError(
         "The month has changed. Refresh before editing this month's plan.",
       );

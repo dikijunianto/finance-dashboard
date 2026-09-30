@@ -12,17 +12,19 @@ import {
 import { updateMonthlyPlan } from "@/actions/plan";
 import { rupiah } from "@/lib/currency";
 import { allocationLabels as labels } from "@/lib/finance/calculations";
-import { formatMonth } from "@/lib/dates";
+import { formatMonth, formatDate, currentMonth } from "@/lib/dates";
 import { MutationForm } from "@/components/ui/mutation-form";
 import { StatusBadge } from "@/components/ui/status-badge";
 export function PlanPage({
   income,
   values,
   month,
+  sources,
 }: {
   income: number;
   values: Record<string, number>;
   month: string;
+  sources: { id: string; source: string; date: string; amount: number }[];
 }) {
   const [open, setOpen] = useState(false);
   const allocated = Object.values(values).reduce((a, b) => a + b, 0);
@@ -45,16 +47,44 @@ export function PlanPage({
           <div className="space-y-5">
             <section className="cash-hero rounded-2xl p-6 md:p-7">
               <p className="eyebrow">{formatMonth(month)}</p>
-              <p className="mt-4 text-sm text-slate-500">Monthly Income</p>
+              <p className="mt-4 text-sm text-slate-500">
+                Available to Allocate
+              </p>
               <strong className="mt-3 block hero-amount">
                 {rupiah(income)}
               </strong>
               {!income && (
                 <p className="mt-2 text-sm text-slate-500">
-                  Add income in Cash Flow before creating a plan.
+                  No funding assigned to {formatMonth(month)} yet. Assign income
+                  to this month in{" "}
+                  <a href="/cash-flow" className="underline">
+                    Activity
+                  </a>{" "}
+                  to start planning.
                 </p>
               )}
             </section>
+            {sources.length > 0 && (
+              <section className="panel">
+                <h2 className="text-lg font-semibold">Funding sources</h2>
+                <ul className="mt-4 divide-y">
+                  {sources.map((x) => (
+                    <li
+                      key={x.id}
+                      className="flex flex-wrap justify-between gap-2 py-3"
+                    >
+                      <div>
+                        <p>{x.source}</p>
+                        <p className="text-xs text-muted">
+                          Received {formatDate(x.date)}
+                        </p>
+                      </div>
+                      <strong>{rupiah(x.amount)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
             <section className="panel">
               <p className="text-3xl font-semibold tracking-tight">
                 {income > 0
@@ -65,7 +95,7 @@ export function PlanPage({
                 </span>
               </p>
               <progress
-                aria-label="Monthly income allocated"
+                aria-label="Plan funding allocated"
                 className="my-5 h-3 w-full"
                 value={Math.max(0, Math.min(allocated, Math.max(0, income)))}
                 max={Math.max(1, income)}
@@ -89,7 +119,7 @@ export function PlanPage({
                 {remaining > 0
                   ? "Still needs a purpose."
                   : remaining < 0
-                    ? "Your allocation exceeds recorded income."
+                    ? "Your allocation exceeds assigned funding."
                     : "Every recorded Rupiah has a purpose."}
               </p>
             </section>
@@ -140,7 +170,7 @@ export function PlanPage({
               })}
             </div>
             <div className="mt-7 grid gap-3 border-t pt-5 sm:grid-cols-3">
-              <Metric label="Total Income" value={income} />
+              <Metric label="Total Funding" value={income} />
               <Metric label="Allocated" value={allocated} />
               <Metric label={`Remaining · ${status}`} value={remaining} />
             </div>
@@ -155,6 +185,11 @@ export function PlanPage({
             onSuccess={() => setOpen(false)}
           >
             <input type="hidden" name="month" value={month} />
+            <input
+              type="hidden"
+              name="calendarMonth"
+              value={currentMonth().start}
+            />
             {Object.entries(labels).map(([key, label]) => (
               <label key={key} className="mt-3 block text-sm">
                 {label}

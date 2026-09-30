@@ -310,6 +310,7 @@ try {
     Source: prefix + " income",
     Amount: 2000000,
     Date: jakartaDate(),
+    "Use for Plan": currentMonth().month,
     Notes: "QA",
   });
   await selectBank("Received To");
@@ -668,15 +669,16 @@ try {
       .innerText();
   await go("/reports");
   assert.equal(
-    await page.locator("main > div form").count(),
+    await page.locator('main > div form:not([method="get"])').count(),
     0,
     "Reports has no finance mutation forms",
   );
   assert((await metric("Income")).includes(rupiah(2000000)));
-  assert((await metric("Expenses")).includes(rupiah(250000)));
-  assert((await metric("Net Cash Flow")).includes(rupiah(1750000)));
+  assert((await metric("Spending")).includes(rupiah(350000)));
+  assert((await metric("Cash Outflow")).includes(rupiah(850000)));
+  assert((await metric("Net Cash Flow")).includes(rupiah(1150000)));
   await go("/dashboard");
-  assert((await metric("Monthly Surplus")).includes(rupiah(1750000)));
+  assert((await metric("Net Cash Flow")).includes(rupiah(1150000)));
   assert((await metric("Bills Remaining")).includes(rupiah(0)));
   assert((await metric("Total Debt")).includes(rupiah(0)));
   assert((await metric("Monthly Plan")).includes(rupiah(1100000)));

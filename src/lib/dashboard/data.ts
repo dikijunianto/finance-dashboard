@@ -16,11 +16,12 @@ import { billDueDate, currentMonth, formatDate } from "@/lib/dates";
 import { getMonthlyReport } from "@/lib/reports/monthly-report";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { isLiquidAccount } from "@/lib/accounts";
+import { getPlanFunding } from "@/lib/plan-funding";
 export async function getDashboardData() {
   await requireAuth();
   const now = new Date();
   const { month, start, next } = currentMonth(now);
-  const [report, accounts, payments, activeBills, snapshots, notes] =
+  const [report, accounts, payments, activeBills, snapshots, notes, funding] =
     await Promise.all([
       getMonthlyReport(now),
       db
@@ -43,6 +44,7 @@ export async function getDashboardData() {
         .orderBy(desc(monthlySnapshots.month))
         .limit(6),
       db.select().from(cfoNotes).orderBy(desc(cfoNotes.createdAt)).limit(4),
+      getPlanFunding(start),
     ]);
   const liquid = accounts.filter(isLiquidAccount);
   const cashAvailable = liquid.reduce((n, a) => n + a.balance, 0);
@@ -104,7 +106,7 @@ export async function getDashboardData() {
     safe,
     status: financialStatus(report.net, safe),
     cashFlow: report.transactionCount
-      ? [{ month, income: report.income, expenses: report.expenses }]
+      ? [{ month, income: report.income, expenses: report.cashOutflow }]
       : [],
     netWorth: snapshots
       .reverse()
@@ -116,9 +118,9 @@ export async function getDashboardData() {
       status: "unpaid",
     })),
     plan: {
-      income: report.income,
+      income: funding.amount,
       allocated,
-      remaining: report.income - allocated,
+      remaining: funding.amount - allocated,
     },
     notes,
     goals: report.goalRows.sort((a, b) => b.priority - a.priority).slice(0, 3),

@@ -89,6 +89,35 @@ try {
   console.log(
     "PASS migration: populated legacy balances, overdrafts, inactive accounts, transaction links and payment history preserved; one exact baseline per account.",
   );
+  await sql`insert into income(user_id,source,amount,received_at) values(${owner.id},'End month',10000000,'2026-09-30'),(${owner.id},'Leap date',100000,'2028-02-29')`;
+  const v11 = {};
+  for (const table of [...tables, "bills", "debts", "account_movements"])
+    v11[table] = await sql.unsafe(`select * from "${table}" order by id`);
+  await sql.begin(async (tx) =>
+    tx.unsafe(
+      await readFile("src/db/migrations/0004_smart_timeslip.sql", "utf8"),
+    ),
+  );
+  for (const table of Object.keys(v11)) {
+    const after = await sql.unsafe(`select * from "${table}" order by id`);
+    assert.deepEqual(
+      after.map((row) => {
+        const copy = { ...row };
+        if (table === "income") delete copy.funding_month;
+        return copy;
+      }),
+      v11[table].map(row => ({ ...row })),
+    );
+  }
+  const funding =
+    await sql`select received_at::text, funding_month::text from income order by received_at`;
+  assert.deepEqual(
+    funding.map((x) => x.funding_month),
+    ["2026-01-01", "2026-09-01", "2028-02-01"],
+  );
+  console.log(
+    "PASS migration 0004: only funding metadata backfilled from actual month; income history, accounts, ledger and payments unchanged.",
+  );
 } finally {
   if (sql) await sql.end();
   assert(/^myfinance_qa_migration_[a-f0-9]{32}$/.test(name));

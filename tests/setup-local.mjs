@@ -39,7 +39,22 @@ try {
       "Migration baseline preserves ledger and balances",
     );
   }
-  console.log("Isolated local QA schema ready; no existing rows changed.");
+  const [funding] =
+    await sql`select 1 present from information_schema.columns where table_schema='public' and table_name='income' and column_name='funding_month'`;
+  if (!funding) {
+    const before =
+      await sql`select id,balance from finance_accounts order by id`;
+    await sql.begin(async (tx) =>
+      tx.unsafe(
+        await readFile("src/db/migrations/0004_smart_timeslip.sql", "utf8"),
+      ),
+    );
+    assert.deepEqual(
+      await sql`select id,balance from finance_accounts order by id`,
+      before,
+    );
+  }
+  console.log("Isolated local QA schema ready; balances preserved.");
 } finally {
   await sql.end();
 }

@@ -1,7 +1,9 @@
-import { and, gte, lt } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { db } from "@/db";
 import {
   budgets,
+  bills,
+  billPayments,
   debtPayments,
   debts,
   expenses,
@@ -20,7 +22,7 @@ import { requireAuth } from "@/lib/auth/require-auth";
 export async function getMonthlyReport(now = new Date()) {
   await requireAuth();
   const { month, start, next } = currentMonth(now);
-  const [incomes, expenseRows, plans, payments, debtRows, goalRows] =
+  const [incomes, expenseRows, plans, payments, debtRows, goalRows, paidBills] =
     await Promise.all([
       db
         .select()
@@ -42,23 +44,44 @@ export async function getMonthlyReport(now = new Date()) {
         ),
       db.select().from(debts),
       db.select().from(goals),
+      db
+        .select({ amount: billPayments.amount, category: bills.category })
+        .from(billPayments)
+        .innerJoin(bills, eq(bills.id, billPayments.billId))
+        .where(
+          and(
+            eq(billPayments.status, "paid"),
+            gte(billPayments.paidAt, new Date(start + "T00:00:00+07:00")),
+            lt(billPayments.paidAt, new Date(next + "T00:00:00+07:00")),
+          ),
+        ),
     ]);
   const total = (rows: { amount: number }[]) =>
     rows.reduce((n, r) => n + r.amount, 0);
   const incomeTotal = total(incomes),
     expensesTotal = total(expenseRows);
   const allocations = allocationTotals(plans);
+  // Paying a bill creates no expense row: its payment is the canonical contribution.
+  const billSpending = total(paidBills);
+  const spending = expensesTotal + billSpending;
+  const debtPaid = total(payments);
+  const cashOutflow = spending + debtPaid;
   const activeDebts = debtRows.filter((d) => !isDebtPaidOff(d));
   return {
     month,
     income: incomeTotal,
     expenses: expensesTotal,
-    net: calculateMonthlySurplus(incomeTotal, expensesTotal),
+    manualSpending: expensesTotal,
+    billSpending,
+    spending,
+    cashOutflow,
+    net: calculateMonthlySurplus(incomeTotal, cashOutflow),
     savingRate: calculateSavingRate(allocations.savings ?? 0, incomeTotal),
     allocations,
-    transactionCount: incomes.length + expenseRows.length,
+    transactionCount:
+      incomes.length + expenseRows.length + paidBills.length + payments.length,
     categories: Object.entries(
-      expenseRows.reduce<Record<string, number>>(
+      [...expenseRows, ...paidBills].reduce<Record<string, number>>(
         (a, e) => {
           a[e.category] = (a[e.category] ?? 0) + e.amount;
           return a;
@@ -66,7 +89,7 @@ export async function getMonthlyReport(now = new Date()) {
         Object.create(null) as Record<string, number>,
       ),
     ),
-    debtPaid: total(payments),
+    debtPaid,
     debtPayments: payments,
     debtRemaining: activeDebts.reduce(
       (n, d) => n + Math.max(0, d.remainingAmount),

@@ -15,6 +15,16 @@ export function currentMonth(now = new Date()) {
     next: `${number === 12 ? year + 1 : year}-${String(number === 12 ? 1 : number + 1).padStart(2, "0")}-01`,
   };
 }
+export function monthStart(value: string) {
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? `${value}-01` : null;
+}
+export function suggestedFundingMonth(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  // Follow the explicit product examples: Sep 24 stays Sep; Sep 25 suggests Oct.
+  const next = day > lastDay - 6;
+  return `${next && month === 12 ? year + 1 : year}-${String(next ? (month === 12 ? 1 : month + 1) : month).padStart(2, "0")}-01`;
+}
 export function billDueDate(month: string, day: number) {
   const [year, number] = month.split("-").map(Number);
   const lastDay = new Date(Date.UTC(year, number, 0)).getUTCDate();

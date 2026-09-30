@@ -28,7 +28,12 @@ import {
   AccountSelect,
   type AccountOption,
 } from "@/components/ui/account-select";
-import { formatDate, formatMonth, jakartaDate } from "@/lib/dates";
+import {
+  formatDate,
+  formatMonth,
+  jakartaDate,
+  suggestedFundingMonth,
+} from "@/lib/dates";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 export type ActivityItem = {
@@ -43,22 +48,24 @@ export type ActivityItem = {
   context: string;
   linked: boolean;
   reverted?: boolean;
+  fundingMonth?: string;
 };
 export function CashFlowPage({
   items,
   month,
   accounts,
+  summary,
 }: {
   items: ActivityItem[];
   month: string;
   accounts: AccountOption[];
+  summary: {
+    income: number;
+    spending: number;
+    cashOutflow: number;
+    net: number;
+  };
 }) {
-  const income = items
-    .filter((x) => x.type === "income" && x.date.startsWith(month))
-    .reduce((n, x) => n + x.amount, 0);
-  const expense = items
-    .filter((x) => x.type === "expense" && x.date.startsWith(month))
-    .reduce((n, x) => n + x.amount, 0);
   return (
     <div className="page">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -70,10 +77,11 @@ export function CashFlowPage({
         </div>
         <TransactionDialog accounts={accounts} />
       </header>
-      <div className="summary-strip mt-8 sm:grid-cols-3">
-        <Stat label="Income" value={income} />
-        <Stat label="Expenses" value={expense} />
-        <Stat label="Net Cash Flow" value={income - expense} />
+      <div className="summary-strip mt-8 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Income" value={summary.income} />
+        <Stat label="Spending" value={summary.spending} />
+        <Stat label="Cash Outflow" value={summary.cashOutflow} />
+        <Stat label="Net Cash Flow" value={summary.net} />
       </div>
       <section className="mt-8">
         <h2 className="border-b pb-5 text-xl font-semibold">
@@ -87,7 +95,9 @@ export function CashFlowPage({
                 key={date}
                 className="mt-5 grid gap-3 xl:grid-cols-[100px_minmax(0,1fr)]"
               >
-                <h3 className="pt-4 text-sm text-muted">{formatDate(date)}</h3>
+                <h3 className="pt-4 text-sm text-muted">
+                  {date ? formatDate(date) : "Unknown payment date"}
+                </h3>
                 <div className="overflow-hidden rounded-2xl border bg-white">
                   {rows!.map((tx) => (
                     <article
@@ -173,9 +183,25 @@ function TransactionDialog({
   item?: ActivityItem;
 }) {
   const [open, setOpen] = useState(false);
+  const initialDate = item?.date ?? jakartaDate();
+  const [date, setDate] = useState(initialDate);
+  const [fundingMonth, setFundingMonth] = useState(
+    item?.fundingMonth?.slice(0, 7) ??
+      suggestedFundingMonth(initialDate).slice(0, 7),
+  );
+  const [fundingChosen, setFundingChosen] = useState(!!item);
   const [type, setType] = useState<"income" | "expense" | "transfer">(
     item?.type === "expense" ? "expense" : "income",
   );
+  const reset = () => {
+    setType(item?.type === "expense" ? "expense" : "income");
+    setDate(initialDate);
+    setFundingMonth(
+      item?.fundingMonth?.slice(0, 7) ??
+        suggestedFundingMonth(initialDate).slice(0, 7),
+    );
+    setFundingChosen(!!item);
+  };
   const action =
     type === "transfer"
       ? createTransfer
@@ -191,7 +217,7 @@ function TransactionDialog({
       open={open}
       onOpenChange={(value) => {
         setOpen(value);
-        if (!value) setType(item?.type === "expense" ? "expense" : "income");
+        reset();
       }}
     >
       <DialogTrigger asChild>
@@ -211,7 +237,8 @@ function TransactionDialog({
         {item && !item.linked && (
           <p className="text-sm text-muted">
             This legacy record has no balance effect. Selecting an account
-            applies the full updated amount to that account.
+            applies the full updated amount to that account. For income, keep it
+            unlinked to change only its Plan funding.
           </p>
         )}
         <MutationForm
@@ -219,7 +246,7 @@ function TransactionDialog({
           action={action}
           onSuccess={() => {
             setOpen(false);
-            setType(item?.type === "expense" ? "expense" : "income");
+            reset();
           }}
         >
           {item && <input type="hidden" name="id" value={item.id} />}
@@ -292,7 +319,13 @@ function TransactionDialog({
             <AccountSelect
               accounts={accounts}
               label={type === "income" ? "Received To" : "Paid From"}
-              defaultValue={item?.linked ? (item.accountId ?? "") : ""}
+              retainCurrent={type === "income" && !!item?.accountId}
+              required={!(type === "income" && item && !item.linked)}
+              defaultValue={
+                item && (item.linked || type === "income")
+                  ? (item.accountId ?? "")
+                  : ""
+              }
             />
           )}
           <label className="mt-4 block text-sm">
@@ -301,10 +334,42 @@ function TransactionDialog({
               name="date"
               type="date"
               required
-              defaultValue={item?.date ?? jakartaDate()}
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (!fundingChosen && e.target.value)
+                  setFundingMonth(
+                    suggestedFundingMonth(e.target.value).slice(0, 7),
+                  );
+              }}
               className="mt-2 w-full rounded-xl border p-2.5"
             />
           </label>
+          {type === "income" && (
+            <label className="mt-4 block text-sm">
+              Use for Plan
+              <input
+                aria-label="Use for Plan"
+                type="month"
+                required
+                value={fundingMonth}
+                onChange={(e) => {
+                  setFundingMonth(e.target.value);
+                  setFundingChosen(true);
+                }}
+                className="mt-2 w-full rounded-xl border p-2.5"
+              />
+              <input
+                type="hidden"
+                name="fundingMonth"
+                value={fundingMonth + "-01"}
+              />
+              <span className="mt-1 block text-xs text-muted">
+                Choose the month this income is intended to fund. Date remains
+                the actual receipt date.
+              </span>
+            </label>
+          )}
           <label className="mt-4 block text-sm">
             Notes
             <input
@@ -320,7 +385,10 @@ function TransactionDialog({
             <button
               type="submit"
               className="button-primary"
-              disabled={!accounts.some((a) => a.isActive)}
+              disabled={
+                !accounts.some((a) => a.isActive) &&
+                !(type === "income" && item)
+              }
             >
               {type === "transfer"
                 ? "Save Transfer"

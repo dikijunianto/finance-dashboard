@@ -29,6 +29,13 @@
       "when": 1790784900135,
       "tag": "0003_account_movements",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790791682361,
+      "tag": "0004_smart_timeslip",
+      "breakpoints": true
     }
   ]
 }
