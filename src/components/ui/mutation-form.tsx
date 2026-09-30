@@ -25,6 +25,7 @@ export function MutationForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const inFlight = useRef(false);
+  const requestId = useRef<string | null>(null);
   const router = useRouter();
   return (
     <form
@@ -33,6 +34,8 @@ export function MutationForm({
         event.preventDefault();
         if (inFlight.current) return;
         const data = new FormData(event.currentTarget);
+        requestId.current ??= crypto.randomUUID();
+        data.set("requestId", requestId.current);
         inFlight.current = true;
         setError("");
         startTransition(async () => {
@@ -43,6 +46,7 @@ export function MutationForm({
               return;
             }
             onSuccess?.();
+            requestId.current = null;
             router.refresh();
           } catch {
             setError(
@@ -100,7 +104,7 @@ export function DeleteConfirmation({
         <p className="text-sm text-slate-600">
           This action cannot be undone.
           {paymentHistory &&
-            " Associated payment history will also be deleted."}
+            " Linked payments will be refunded to their accounts; payment history will be deleted, with audit reversals retained."}
         </p>
         <MutationForm action={action} onSuccess={() => setOpen(false)}>
           <input type="hidden" name="id" value={id} />

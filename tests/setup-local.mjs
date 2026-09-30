@@ -14,8 +14,31 @@ try {
     for (const file of (await readdir("src/db/migrations"))
       .filter((f) => f.endsWith(".sql"))
       .sort()) {
-      await sql.unsafe(await readFile("src/db/migrations/" + file, "utf8"));
+      const text = await readFile("src/db/migrations/" + file, "utf8");
+      await sql.begin((tx) => tx.unsafe(text));
     }
+  const [ledger] =
+    await sql`select to_regclass('public.account_movements') as present`;
+  if (!ledger.present) {
+    const before =
+      await sql`select id,balance from finance_accounts order by id`;
+    const migration = await readFile(
+      "src/db/migrations/0003_account_movements.sql",
+      "utf8",
+    );
+    await sql.begin((tx) => tx.unsafe(migration));
+    assert.deepEqual(
+      await sql`select id,balance from finance_accounts order by id`,
+      before,
+    );
+    const mismatch =
+      await sql`select a.id from finance_accounts a left join account_movements m on m.account_id=a.id group by a.id having a.balance != coalesce(sum(m.amount),0)`;
+    assert.equal(
+      mismatch.length,
+      0,
+      "Migration baseline preserves ledger and balances",
+    );
+  }
   console.log("Isolated local QA schema ready; no existing rows changed.");
 } finally {
   await sql.end();

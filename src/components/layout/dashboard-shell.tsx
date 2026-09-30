@@ -20,7 +20,7 @@ const links = [
     group: "Overview",
   },
   { href: "/accounts", label: "Accounts", icon: Landmark, group: "Money" },
-  { href: "/cash-flow", label: "Cash Flow", icon: BarChart3, group: "Money" },
+  { href: "/cash-flow", label: "Activity", icon: BarChart3, group: "Money" },
   { href: "/bills", label: "Bills & Debt", icon: CreditCard, group: "Plan" },
   { href: "/budget", label: "Plan", icon: Wallet, group: "Plan" },
   { href: "/goals", label: "Goals", icon: Target, group: "Plan" },

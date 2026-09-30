@@ -38,7 +38,8 @@ export function PlanPage({
       <div className="page">
         <h1 className="text-3xl font-semibold">Plan</h1>
         <p className="mt-2 text-slate-600">
-          Give every Rupiah a purpose before spending it. · {formatMonth(month)}
+          Give every Rupiah a purpose before spending it. Allocations do not
+          move account money. · {formatMonth(month)}
         </p>
         <div className="mt-8 grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)]">
           <div className="space-y-5">

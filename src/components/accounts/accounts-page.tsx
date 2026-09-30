@@ -23,6 +23,7 @@ import {
 } from "@/lib/accounts";
 import { rupiah } from "@/lib/currency";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatDate } from "@/lib/dates";
 
 type Account = {
   id: string;
@@ -36,7 +37,21 @@ const primary =
   "rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white";
 const input = "mt-1 w-full rounded-lg border p-2";
 
-export function AccountsPage({ accounts }: { accounts: Account[] }) {
+type Movement = {
+  id: string;
+  accountId: string;
+  amount: number;
+  description: string;
+  date: string;
+  type: string;
+};
+export function AccountsPage({
+  accounts,
+  movements,
+}: {
+  accounts: Account[];
+  movements: Movement[];
+}) {
   const liquid = accounts
     .filter(isLiquidAccount)
     .reduce((sum, account) => sum + account.balance, 0);
@@ -79,8 +94,8 @@ export function AccountsPage({ accounts }: { accounts: Account[] }) {
         </div>
       </div>
       <p className="mt-4 text-sm text-slate-500">
-        Updated manually. Income, expenses and payments do not change account
-        balances.
+        Transactions and payments update your balances. Reconcile against your
+        bank or wallet when needed.
       </p>
       {accounts.length ? (
         <div className="mt-7 space-y-6">
@@ -160,6 +175,34 @@ export function AccountsPage({ accounts }: { accounts: Account[] }) {
                               reactivate.
                             </p>
                           )}
+                          <details className="mt-4 border-t pt-3 lg:col-span-2">
+                            <summary className="cursor-pointer text-sm text-brand">
+                              Recent movements
+                            </summary>
+                            <div className="mt-3 divide-y">
+                              {movements
+                                .filter((m) => m.accountId === account.id)
+                                .slice(0, 8)
+                                .map((m) => (
+                                  <div
+                                    key={m.id}
+                                    className="flex flex-wrap justify-between gap-3 py-3 text-sm"
+                                  >
+                                    <div>
+                                      <p>{m.description}</p>
+                                      <p className="mt-1 text-xs text-muted">
+                                        {formatDate(m.date)} ·{" "}
+                                        {m.type.replaceAll("_", " ")}
+                                      </p>
+                                    </div>
+                                    <strong>
+                                      {m.amount < 0 ? "− " : "+ "}
+                                      {rupiah(Math.abs(m.amount))}
+                                    </strong>
+                                  </div>
+                                ))}
+                            </div>
+                          </details>
                         </article>
                       ))}
                   </div>
@@ -285,19 +328,26 @@ function AccountDialog({ account }: { account?: Account }) {
 }
 function BalanceDialog({ account }: { account: Account }) {
   const [open, setOpen] = useState(false);
+  const [actual, setActual] = useState(String(account.balance));
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        setActual(String(account.balance));
+      }}
+    >
       <DialogTrigger asChild>
         <button type="button" className={primary}>
-          Edit Balance
+          Reconcile Balance
         </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Update Balance</DialogTitle>
+          <DialogTitle>Reconcile Balance</DialogTitle>
         </DialogHeader>
         <p className="font-semibold">{account.name}</p>
-        <p className="mt-3 text-sm text-slate-500">Current Balance</p>
+        <p className="mt-3 text-sm text-slate-500">Recorded Balance</p>
         <p className="mt-1 text-xl font-semibold">{rupiah(account.balance)}</p>
         <MutationForm
           action={updateAccountBalance}
@@ -305,14 +355,15 @@ function BalanceDialog({ account }: { account: Account }) {
         >
           <input type="hidden" name="id" value={account.id} />
           <label className="mt-4 block text-sm">
-            New Balance
+            Actual Balance
             <input
               name="balance"
               type="number"
               min={-2147483648}
               max={2147483647}
               step="1"
-              defaultValue={account.balance}
+              value={actual}
+              onChange={(event) => setActual(event.target.value)}
               required
               className={input}
             />
@@ -320,6 +371,18 @@ function BalanceDialog({ account }: { account: Account }) {
           <p className="mt-2 text-xs text-slate-500">
             Enter whole Rupiah. Negative balances can represent overdrafts.
           </p>
+          <p className="mt-4 text-sm">
+            Adjustment:{" "}
+            <strong>
+              {actual.trim() && Number.isFinite(Number(actual))
+                ? rupiah(Number(actual) - account.balance)
+                : "—"}
+            </strong>
+          </p>
+          <label className="mt-4 block text-sm">
+            Notes (optional)
+            <input name="notes" maxLength={1000} className={input} />
+          </label>
           <DialogFooter>
             <DialogClose
               type="button"
@@ -328,7 +391,7 @@ function BalanceDialog({ account }: { account: Account }) {
               Cancel
             </DialogClose>
             <button type="submit" className={primary}>
-              Update Balance
+              Reconcile
             </button>
           </DialogFooter>
         </MutationForm>

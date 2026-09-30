@@ -23,7 +23,11 @@ import {
   DeleteConfirmation,
 } from "@/components/ui/mutation-form";
 import { isDebtPaidOff, progressPercent } from "@/lib/finance/calculations";
-import { billDueDate, formatDate, formatMonth } from "@/lib/dates";
+import { billDueDate, formatDate, formatMonth, jakartaDate } from "@/lib/dates";
+import {
+  AccountSelect,
+  type AccountOption,
+} from "@/components/ui/account-select";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 type Bill = {
@@ -49,12 +53,14 @@ export function BillsDebtPage({
   paidBillIds,
   paidTotal,
   month,
+  accounts,
 }: {
   bills: Bill[];
   debts: Debt[];
   paidBillIds: string[];
   paidTotal: number;
   month: string;
+  accounts: AccountOption[];
 }) {
   const [tab, setTab] = useState<"bills" | "debt">("bills");
   const activeDebts = debts.filter((debt) => !isDebtPaidOff(debt));
@@ -133,12 +139,7 @@ export function BillsDebtPage({
                         {paidBillIds.includes(b.id) ? (
                           <StatusBadge tone="good">Paid</StatusBadge>
                         ) : b.isActive ? (
-                          <MutationForm action={markBillPaid}>
-                            <input name="id" type="hidden" value={b.id} />
-                            <button className="button-primary">
-                              Mark Paid
-                            </button>
-                          </MutationForm>
+                          <BillPayDialog bill={b} accounts={accounts} />
                         ) : (
                           <span className="text-xs text-slate-500">
                             Inactive
@@ -226,7 +227,9 @@ export function BillsDebtPage({
                     <span>Due {d.dueDay}</span>
                   </div>
                   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-5">
-                    {!isPaidOff && <PaymentDialog debt={d} />}
+                    {!isPaidOff && (
+                      <PaymentDialog debt={d} accounts={accounts} />
+                    )}
                     <DeleteConfirmation
                       id={d.id}
                       name={d.name}
@@ -400,7 +403,13 @@ function EntryDialog({
     </Dialog>
   );
 }
-function PaymentDialog({ debt }: { debt: Debt }) {
+function PaymentDialog({
+  debt,
+  accounts,
+}: {
+  debt: Debt;
+  accounts: AccountOption[];
+}) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -435,6 +444,25 @@ function PaymentDialog({ debt }: { debt: Debt }) {
               max={2147483647}
             />
           </label>
+          <AccountSelect accounts={accounts} label="Pay From" />
+          <label className="mt-4 block text-sm">
+            Payment Date
+            <input
+              name="date"
+              type="date"
+              defaultValue={jakartaDate()}
+              required
+              className="w-full rounded-lg border p-2"
+            />
+          </label>
+          <label className="mt-4 block text-sm">
+            Notes
+            <input
+              name="notes"
+              maxLength={1000}
+              className="w-full rounded-lg border p-2"
+            />
+          </label>
           <DialogFooter>
             <DialogClose
               type="button"
@@ -442,8 +470,61 @@ function PaymentDialog({ debt }: { debt: Debt }) {
             >
               Cancel
             </DialogClose>
-            <button className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">
+            <button
+              disabled={!accounts.some((a) => a.isActive)}
+              className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+            >
               Record Payment
+            </button>
+          </DialogFooter>
+        </MutationForm>
+      </DialogContent>
+    </Dialog>
+  );
+}
+function BillPayDialog({
+  bill,
+  accounts,
+}: {
+  bill: Bill;
+  accounts: AccountOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <button type="button" className="button-primary">
+          Pay Bill
+        </button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Pay Bill</DialogTitle>
+        </DialogHeader>
+        <p className="font-semibold">{bill.name}</p>
+        <p className="mt-2 money">{rupiah(bill.amount)}</p>
+        <MutationForm action={markBillPaid} onSuccess={() => setOpen(false)}>
+          <input type="hidden" name="id" value={bill.id} />
+          <AccountSelect accounts={accounts} label="Pay From" />
+          <label className="mt-4 block text-sm">
+            Payment Date
+            <input
+              name="date"
+              type="date"
+              defaultValue={jakartaDate()}
+              required
+              className="w-full rounded-lg border p-2"
+            />
+          </label>
+          <DialogFooter>
+            <DialogClose type="button" className="button-secondary">
+              Cancel
+            </DialogClose>
+            <button
+              disabled={!accounts.some((a) => a.isActive)}
+              className="button-primary"
+            >
+              Pay Bill
             </button>
           </DialogFooter>
         </MutationForm>

@@ -38,7 +38,8 @@ export function GoalsPage({ goals }: { goals: Goal[] }) {
           <div>
             <h1 className="text-3xl font-semibold">Financial Goals</h1>
             <p className="mt-2 text-slate-600">
-              Build toward the things that matter.
+              Track progress toward what matters. Contributions do not move
+              account money.
             </p>
           </div>
           {goals.length > 0 && (

@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 import postgres from "postgres";
+import { randomUUID } from "node:crypto";
 const url = new URL(process.env.QA_DATABASE_URL);
 assert(
   ["127.0.0.1", "localhost"].includes(url.hostname) &&
@@ -74,12 +75,20 @@ const { getDashboardData } = await import("../src/lib/dashboard/data.ts");
 const sql = postgres(url.href);
 const form = (data) => {
   const f = new FormData();
-  for (const [k, v] of Object.entries(data)) f.set(k, String(v));
+  for (const [k, v] of Object.entries({
+    accountId: paymentAccountId,
+    requestId: randomUUID(),
+    date: jakartaDate(),
+    category: data.notes || "Other",
+    ...data,
+  }))
+    f.set(k, String(v));
   return f;
 };
 const prefix = "QA-actions-" + Date.now();
 const month = currentMonth().start;
 let owner;
+let paymentAccountId = "";
 try {
   for (const action of [
     ...Object.values(cash),
@@ -124,6 +133,17 @@ try {
     "Unexpected signing algorithms are rejected",
   );
   jar.set("finance_session", saved);
+  const { requireOwner } = await import("../src/lib/action-result.ts");
+  owner = await requireOwner();
+  const opening = form({
+    name: prefix + " payment account",
+    type: "other",
+    balance: 0,
+  });
+  assert.equal((await accounts.createAccount(opening)).success, true);
+  paymentAccountId = (
+    await sql`select id from finance_accounts where name=${prefix + " payment account"}`
+  )[0].id;
   assert.equal(
     (
       await cash.createIncome(
@@ -543,13 +563,611 @@ try {
       .balance,
     1,
   );
+  assert.equal(
+    (
+      await cash.createIncome(
+        form({ accountId: foreign.id, label: "Unauthorized", amount: 1 }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(
+    (
+      await cash.createExpense(
+        form({ accountId: foreign.id, label: "Unauthorized", amount: 1 }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(
+    (
+      await cash.createTransfer(
+        form({ fromAccountId: bankId, toAccountId: foreign.id, amount: 1 }),
+      )
+    ).success,
+    false,
+  );
   await sql`delete from finance_accounts where id=${foreign.id}`;
   await sql`delete from "user" where id=${foreignUser.id}`;
   assert(globalThis.qaPaths.includes("/accounts"));
-  for (const id of accountIds)
+  for (const id of accountIds) {
+    await sql`delete from account_movements where account_id=${id}`;
     await sql`delete from finance_accounts where id=${id}`;
+  }
   console.log(
     "PASS Accounts actions: all types, balances, metadata preservation, validation, deactivate/reactivate, ownership, shared Overview totals.",
+  );
+  // v1.1: exact account effects, reversals, retries, concurrent writes and rollbacks.
+  const v1Ids = [];
+  const createMoneyAccount = async (suffix, balance, type = "bank") => {
+    const f = form({ name: prefix + suffix, type, balance });
+    assert.equal((await accounts.createAccount(f)).success, true);
+    assert.equal(
+      (await accounts.createAccount(f)).success,
+      true,
+      "Opening retry is a no-op",
+    );
+    const [a] =
+      await sql`select * from finance_accounts where name=${prefix + suffix}`;
+    v1Ids.push(a.id);
+    assert.equal(
+      (
+        await sql`select count(*)::int n from account_movements where account_id=${a.id}`
+      )[0].n,
+      1,
+    );
+    return a.id;
+  };
+  const bank = await createMoneyAccount(" v1 bank", 5000000);
+  const wallet = await createMoneyAccount(" v1 wallet", 0, "e_wallet");
+  const investment = await createMoneyAccount(
+    " v1 investment",
+    0,
+    "investment",
+  );
+  const extreme = await createMoneyAccount(
+    " v1 extremes",
+    -2147483648,
+    "other",
+  );
+  assert.equal(
+    (
+      await accounts.updateAccountBalance(
+        form({ id: extreme, balance: 2147483647 }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(
+    Number(
+      (
+        await sql`select amount from account_movements where account_id=${extreme} and type='adjustment'`
+      )[0].amount,
+    ),
+    4294967295,
+  );
+  const amountAt = async (id) =>
+    (await sql`select balance from finance_accounts where id=${id}`)[0].balance;
+  const ledgerAgrees = async () => {
+    for (const id of v1Ids)
+      assert.equal(
+        Number(
+          (
+            await sql`select coalesce(sum(amount),0) n from account_movements where account_id=${id}`
+          )[0].n,
+        ),
+        await amountAt(id),
+        "Ledger explains materialized balance",
+      );
+  };
+  const salaryForm = form({
+    accountId: bank,
+    label: prefix + " salary",
+    amount: 10000000,
+  });
+  assert.equal((await cash.createIncome(salaryForm)).success, true);
+  assert.equal((await cash.createIncome(salaryForm)).success, true);
+  assert.equal(await amountAt(bank), 15000000);
+  const salary = (
+    await sql`select id from income where source=${prefix + " salary"}`
+  )[0].id;
+  const expenseForm = form({
+    accountId: bank,
+    label: prefix + " grocery",
+    category: "living",
+    amount: 250000,
+  });
+  assert.equal((await cash.createExpense(expenseForm)).success, true);
+  assert.equal(await amountAt(bank), 14750000);
+  const grocery = (
+    await sql`select id from expenses where description=${prefix + " grocery"}`
+  )[0].id;
+  assert.equal(
+    (
+      await cash.updateExpense(
+        form({
+          id: grocery,
+          accountId: bank,
+          label: prefix + " grocery",
+          category: "living",
+          amount: 300000,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), 14700000);
+  assert.equal(
+    (
+      await cash.updateExpense(
+        form({
+          id: grocery,
+          accountId: wallet,
+          label: prefix + " grocery",
+          category: "living",
+          amount: 300000,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), 15000000);
+  assert.equal(await amountAt(wallet), -300000);
+  assert.equal((await cash.deleteExpense(form({ id: grocery }))).success, true);
+  assert.equal(await amountAt(wallet), 0);
+  assert.equal(await amountAt(bank), 15000000);
+  const beforeTransferReport = await getMonthlyReport();
+  const transferForm = form({
+    fromAccountId: bank,
+    toAccountId: wallet,
+    amount: 500000,
+  });
+  assert.equal((await cash.createTransfer(transferForm)).success, true);
+  assert.equal((await cash.createTransfer(transferForm)).success, true);
+  assert.equal(await amountAt(bank), 14500000);
+  assert.equal(await amountAt(wallet), 500000);
+  assert.equal((await getDashboardData()).cashAvailable, 15000000);
+  const afterTransferReport = await getMonthlyReport();
+  for (const key of ["income", "expenses", "net", "savingRate"])
+    assert.equal(afterTransferReport[key], beforeTransferReport[key]);
+  assert.equal(
+    (
+      await bills.createBill(
+        form({
+          name: prefix + " internet",
+          amount: 350000,
+          category: "utilities",
+          dueDay: 15,
+        }),
+      )
+    ).success,
+    true,
+  );
+  const internet = (
+    await sql`select id from bills where name=${prefix + " internet"}`
+  )[0].id;
+  await Promise.all(
+    [1, 2].map(() =>
+      bills.markBillPaid(form({ id: internet, accountId: bank })),
+    ),
+  );
+  assert.equal(await amountAt(bank), 14150000);
+  assert.equal(
+    (
+      await sql`select count(*)::int n from bill_payments where bill_id=${internet}`
+    )[0].n,
+    1,
+  );
+  assert.equal(
+    (
+      await bills.createDebt(
+        form({
+          name: prefix + " loan",
+          lender: "QA",
+          originalAmount: 5000000,
+          remainingAmount: 5000000,
+          installmentAmount: 1000000,
+          dueDay: 15,
+        }),
+      )
+    ).success,
+    true,
+  );
+  const loan = (
+    await sql`select id from debts where name=${prefix + " loan"}`
+  )[0].id;
+  const payment = form({ id: loan, amount: 1000000, accountId: bank });
+  assert.equal((await bills.recordDebtPayment(payment)).success, true);
+  assert.equal((await bills.recordDebtPayment(payment)).success, true);
+  assert.equal(await amountAt(bank), 13150000);
+  assert.equal(
+    (await sql`select remaining_amount from debts where id=${loan}`)[0]
+      .remaining_amount,
+    4000000,
+  );
+  assert.equal(
+    (
+      await bills.recordDebtPayment(
+        form({ id: loan, amount: 4000000, accountId: bank }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), 9150000);
+  assert.deepEqual(
+    (await sql`select remaining_amount,status from debts where id=${loan}`)[0],
+    { remaining_amount: 0, status: "paid" },
+  );
+  assert.equal(
+    (
+      await bills.recordDebtPayment(
+        form({ id: loan, amount: 1, accountId: bank }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(await amountAt(bank), 9150000);
+  const reconcile = form({ id: bank, balance: 10000000 });
+  assert.equal((await accounts.updateAccountBalance(reconcile)).success, true);
+  assert.equal((await accounts.updateAccountBalance(reconcile)).success, true);
+  assert.equal(
+    (
+      await accounts.updateAccountBalance(
+        form({ id: bank, balance: 9975000, notes: "Bank statement" }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), 9975000);
+  assert.equal(
+    Number(
+      (
+        await sql`select amount from account_movements where account_id=${bank} and description='Bank statement'`
+      )[0].amount,
+    ),
+    -25000,
+  );
+  const beforePlanning = await amountAt(bank);
+  assert.equal((await plan.updateMonthlyPlan(form(allocations))).success, true);
+  assert.equal(
+    (
+      await goals.createGoal(
+        form({
+          name: prefix + " reserve",
+          targetAmount: 100,
+          currentAmount: 0,
+          targetDate: "",
+          priority: 1,
+        }),
+      )
+    ).success,
+    true,
+  );
+  const reserve = (
+    await sql`select id from financial_goals where name=${prefix + " reserve"}`
+  )[0].id;
+  assert.equal(
+    (await goals.addGoalProgress(form({ id: reserve, amount: 50 }))).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), beforePlanning);
+  const afterAdjustmentReport = await getMonthlyReport();
+  for (const key of ["income", "expenses", "net"])
+    assert.equal(afterAdjustmentReport[key], beforeTransferReport[key]);
+  // Amount edits and account changes reverse the previous linked effect exactly.
+  assert.equal(
+    (
+      await cash.updateIncome(
+        form({
+          id: salary,
+          label: prefix + " salary",
+          accountId: bank,
+          amount: 12000000,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), 11975000);
+  assert.equal(
+    (
+      await cash.updateIncome(
+        form({
+          id: salary,
+          label: prefix + " salary",
+          accountId: wallet,
+          amount: 12000000,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(await amountAt(bank), -25000);
+  assert.equal(await amountAt(wallet), 12500000);
+  assert.equal((await cash.deleteIncome(form({ id: salary }))).success, true);
+  assert.equal(await amountAt(wallet), 500000);
+  const legacyId = randomUUID();
+  await sql`insert into expenses(id,user_id,account_id,description,category,amount,spent_at) values(${legacyId},${owner},${bank},${prefix + " legacy"},'Other',100,${jakartaDate()})`;
+  const legacyBefore = await amountAt(bank);
+  assert.equal(
+    (
+      await cash.updateExpense(
+        form({
+          id: legacyId,
+          accountId: wallet,
+          label: prefix + " legacy",
+          category: "Other",
+          amount: 150,
+        }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(
+    await amountAt(bank),
+    legacyBefore,
+    "Never replay an old account link without ledger evidence",
+  );
+  assert.equal(await amountAt(wallet), 499850);
+  assert.equal(
+    (await cash.deleteExpense(form({ id: legacyId }))).success,
+    true,
+  );
+  const concurrent = await Promise.all(
+    [1, 2].map((n) =>
+      cash.createExpense(
+        form({
+          label: prefix + " concurrent " + n,
+          category: "Other",
+          amount: 100,
+          accountId: wallet,
+        }),
+      ),
+    ),
+  );
+  assert(concurrent.every((r) => r.success));
+  assert.equal(await amountAt(wallet), 499800);
+  const sameRequest = form({
+    accountId: wallet,
+    label: prefix + " retry",
+    amount: 10,
+  });
+  assert(
+    (
+      await Promise.all([
+        cash.createIncome(sameRequest),
+        cash.createIncome(sameRequest),
+      ])
+    ).every((r) => r.success),
+  );
+  assert.equal(await amountAt(wallet), 499810);
+  const retryIncome = (
+    await sql`select id from income where source=${prefix + " retry"}`
+  )[0].id;
+  await cash.deleteIncome(form({ id: retryIncome }));
+  assert.equal(await amountAt(wallet), 499800);
+  const opposite = await Promise.all([
+    cash.createTransfer(
+      form({ fromAccountId: wallet, toAccountId: bank, amount: 10 }),
+    ),
+    cash.createTransfer(
+      form({ fromAccountId: bank, toAccountId: wallet, amount: 10 }),
+    ),
+  ]);
+  assert(
+    opposite.every((r) => r.success),
+    "Opposite transfers cannot deadlock",
+  );
+  assert.equal(await amountAt(wallet), 499800);
+  assert.equal(
+    (
+      await cash.createTransfer(
+        form({ fromAccountId: wallet, toAccountId: investment, amount: 1000 }),
+      )
+    ).success,
+    true,
+  );
+  assert.equal(
+    (await getDashboardData()).cashAvailable,
+    (await amountAt(bank)) + (await amountAt(wallet)),
+  );
+  const transfer = (
+    await sql`select reference_id from account_movements where request_id=${transferForm.get("requestId")}`
+  )[0].reference_id;
+  assert.equal(
+    (await cash.revertTransfer(form({ id: transfer }))).success,
+    true,
+  );
+  assert.equal(
+    (await cash.revertTransfer(form({ id: transfer }))).success,
+    true,
+  );
+  assert.equal(
+    (
+      await cash.createTransfer(
+        form({ fromAccountId: bank, toAccountId: bank, amount: 1 }),
+      )
+    ).success,
+    false,
+  );
+  await accounts.deactivateAccount(form({ id: investment }));
+  assert.equal(
+    (
+      await cash.createIncome(
+        form({ accountId: investment, label: "Rejected", amount: 1 }),
+      )
+    ).success,
+    false,
+  );
+  assert.equal(
+    (
+      await cash.createExpense(
+        form({
+          accountId: randomUUID(),
+          label: "Rejected",
+          category: "Other",
+          amount: 1,
+        }),
+      )
+    ).success,
+    false,
+  );
+  // Fail on ledger insertion AFTER the balance/domain mutations, proving full rollback.
+  await sql.unsafe(
+    "CREATE OR REPLACE FUNCTION qa_reject_movement() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.description = 'QA_FORCE_ROLLBACK' OR EXISTS(SELECT 1 FROM finance_accounts WHERE id=NEW.account_id AND name='QA_FORCE_ROLLBACK') THEN RAISE EXCEPTION 'forced QA rollback'; END IF; RETURN NEW; END $$",
+  );
+  await sql.unsafe(
+    "CREATE TRIGGER qa_reject_movement BEFORE INSERT ON account_movements FOR EACH ROW EXECUTE FUNCTION qa_reject_movement()",
+  );
+  try {
+    const before = await amountAt(bank);
+    assert.equal(
+      (
+        await accounts.createAccount(
+          form({ name: "QA_FORCE_ROLLBACK", type: "bank", balance: 100 }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(
+      (
+        await sql`select count(*)::int n from finance_accounts where name='QA_FORCE_ROLLBACK'`
+      )[0].n,
+      0,
+    );
+    assert.equal(
+      (
+        await cash.createExpense(
+          form({ accountId: bank, label: "QA_FORCE_ROLLBACK", amount: 100 }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(
+      (
+        await sql`select count(*)::int n from expenses where description='QA_FORCE_ROLLBACK'`
+      )[0].n,
+      0,
+    );
+    assert.equal(await amountAt(bank), before);
+    await bills.createBill(
+      form({
+        name: "QA_FORCE_ROLLBACK",
+        amount: 100,
+        dueDay: 1,
+        category: "QA",
+      }),
+    );
+    const failBill = (
+      await sql`select id from bills where name='QA_FORCE_ROLLBACK'`
+    )[0].id;
+    assert.equal(
+      (await bills.markBillPaid(form({ id: failBill, accountId: bank })))
+        .success,
+      false,
+    );
+    assert.equal(
+      (
+        await sql`select count(*)::int n from bill_payments where bill_id=${failBill}`
+      )[0].n,
+      0,
+    );
+    assert.equal(await amountAt(bank), before);
+    await bills.deleteBill(form({ id: failBill }));
+    await bills.createDebt(
+      form({
+        name: "QA_FORCE_ROLLBACK",
+        lender: "QA",
+        originalAmount: 100,
+        remainingAmount: 100,
+        installmentAmount: 10,
+        dueDay: 1,
+      }),
+    );
+    const failDebt = (
+      await sql`select id from debts where name='QA_FORCE_ROLLBACK'`
+    )[0].id;
+    assert.equal(
+      (
+        await bills.recordDebtPayment(
+          form({ id: failDebt, accountId: bank, amount: 50 }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(
+      (await sql`select remaining_amount from debts where id=${failDebt}`)[0]
+        .remaining_amount,
+      100,
+    );
+    assert.equal(
+      (
+        await sql`select count(*)::int n from debt_payments where debt_id=${failDebt}`
+      )[0].n,
+      0,
+    );
+    assert.equal(await amountAt(bank), before);
+    await bills.deleteDebt(form({ id: failDebt }));
+    assert.equal(
+      (
+        await cash.createIncome(
+          form({ accountId: bank, label: "QA_FORCE_ROLLBACK", amount: 100 }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(await amountAt(bank), before);
+    assert.equal(
+      (
+        await sql`select count(*)::int n from income where source='QA_FORCE_ROLLBACK'`
+      )[0].n,
+      0,
+    );
+    assert.equal(
+      (
+        await cash.createTransfer(
+          form({
+            fromAccountId: bank,
+            toAccountId: wallet,
+            amount: 100,
+            notes: "QA_FORCE_ROLLBACK",
+          }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(await amountAt(bank), before);
+    assert.equal(
+      (
+        await accounts.updateAccountBalance(
+          form({ id: bank, balance: 0, notes: "QA_FORCE_ROLLBACK" }),
+        )
+      ).success,
+      false,
+    );
+    assert.equal(await amountAt(bank), before);
+  } finally {
+    await sql.unsafe("DROP TRIGGER qa_reject_movement ON account_movements");
+    await sql.unsafe("DROP FUNCTION qa_reject_movement()");
+  }
+  await ledgerAgrees();
+  const preRefund = await amountAt(bank);
+  assert.equal((await bills.deleteBill(form({ id: internet }))).success, true);
+  assert.equal(await amountAt(bank), preRefund + 350000);
+  assert.equal((await bills.deleteDebt(form({ id: loan }))).success, true);
+  assert.equal(await amountAt(bank), preRefund + 5350000);
+  await ledgerAgrees();
+  await goals.deleteGoal(form({ id: reserve }));
+  for (const id of v1Ids) {
+    await sql`delete from income where account_id=${id}`;
+    await sql`delete from expenses where account_id=${id}`;
+    await sql`delete from account_movements where account_id=${id}`;
+    await sql`delete from finance_accounts where id=${id}`;
+  }
+  await sql`delete from account_movements where account_id=${paymentAccountId}`;
+  await sql`delete from finance_accounts where id=${paymentAccountId}`;
+  console.log(
+    "PASS v1.1: opening, income/expense edits/deletes, legacy conversion, transfers/reverts, payment retries/refunds, reconciliation, concurrency, rollback, ledger sums and read-only planning/report semantics.",
   );
   const { db } = await import("../src/db/index.ts");
   await db.$client.end();

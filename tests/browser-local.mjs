@@ -64,7 +64,7 @@ const save = async (name) => {
 };
 const rowCounts = async () =>
   (
-    await sql`select (select count(*) from finance_accounts)::int accounts,(select count(*) from income)::int income,(select count(*) from expenses)::int expenses,(select count(*) from bills)::int bills,(select count(*) from bill_payments)::int bill_payments,(select count(*) from debts)::int debts,(select count(*) from debt_payments)::int debt_payments,(select count(*) from financial_goals)::int goals,(select count(*) from budgets)::int budgets,(select count(*) from cfo_notes)::int notes`
+    await sql`select (select count(*) from account_movements)::int movements,(select count(*) from finance_accounts)::int accounts,(select count(*) from income)::int income,(select count(*) from expenses)::int expenses,(select count(*) from bills)::int bills,(select count(*) from bill_payments)::int bill_payments,(select count(*) from debts)::int debts,(select count(*) from debt_payments)::int debt_payments,(select count(*) from financial_goals)::int goals,(select count(*) from budgets)::int budgets,(select count(*) from cfo_notes)::int notes`
   )[0];
 async function closeChecks(trigger, label) {
   const before = await rowCounts();
@@ -154,7 +154,7 @@ try {
     [
       "Overview",
       "Accounts",
-      "Cash Flow",
+      "Activity",
       "Bills & Debt",
       "Plan",
       "Goals",
@@ -224,16 +224,20 @@ try {
     (
       await sql`select * from finance_accounts where name=${prefix + " account bank"}`
     )[0];
+  const selectBank = async (label) =>
+    dialog()
+      .getByLabel(label, { exact: true })
+      .selectOption((await readBank()).id);
   await closeChecks(
-    bankCard.getByRole("button", { name: "Edit Balance", exact: true }),
-    "New Balance",
+    bankCard.getByRole("button", { name: "Reconcile Balance", exact: true }),
+    "Actual Balance",
   );
   assert.equal((await readBank()).balance, 7500000);
   await bankCard
-    .getByRole("button", { name: "Edit Balance", exact: true })
+    .getByRole("button", { name: "Reconcile Balance", exact: true })
     .click();
-  await fill({ "New Balance": 8000000 });
-  await save("Update Balance");
+  await fill({ "Actual Balance": 8000000 });
+  await save("Reconcile");
   await page.reload();
   await bankCard.waitFor();
   assert.equal((await readBank()).balance, 8000000);
@@ -308,6 +312,7 @@ try {
     Date: jakartaDate(),
     Notes: "QA",
   });
+  await selectBank("Received To");
   let releaseIncome;
   const incomeGate = new Promise((resolve) => {
     releaseIncome = resolve;
@@ -344,7 +349,9 @@ try {
     Date: jakartaDate(),
     Category: "living",
   });
+  await selectBank("Paid From");
   await save("Save Expense");
+  assert.equal((await readBank()).balance, 9750000);
   await page.reload();
   await page.getByText(prefix + " expense", { exact: true }).waitFor();
   assert.equal(
@@ -372,7 +379,14 @@ try {
     .locator("div.border-b")
     .filter({ has: page.getByText(prefix + " bill", { exact: true }) })
     .last();
-  await billRow.getByRole("button", { name: "Mark Paid", exact: true }).click();
+  await closeChecks(
+    billRow.getByRole("button", { name: "Pay Bill", exact: true }),
+    "Payment Date",
+  );
+  await billRow.getByRole("button", { name: "Pay Bill", exact: true }).click();
+  await selectBank("Pay From");
+  await save("Pay Bill");
+  assert.equal((await readBank()).balance, 9650000);
   await billRow.getByText("Paid", { exact: true }).waitFor();
   await page.reload();
   assert.equal(
@@ -387,7 +401,7 @@ try {
     .last();
   assert.equal(
     await billRow
-      .getByRole("button", { name: "Mark Paid", exact: true })
+      .getByRole("button", { name: "Pay Bill", exact: true })
       .count(),
     0,
   );
@@ -439,7 +453,9 @@ try {
     .getByText(prefix + " debt", { exact: false })
     .waitFor();
   await fill({ "Payment amount": 100000 });
+  await selectBank("Pay From");
   await save("Record Payment");
+  assert.equal((await readBank()).balance, 9550000);
   await page.reload();
   await button("Debt").click();
   assert.equal(
@@ -455,7 +471,9 @@ try {
     .getByRole("button", { name: "Record Payment", exact: true })
     .click();
   await fill({ "Payment amount": 400000 });
+  await selectBank("Pay From");
   await save("Record Payment");
+  assert.equal((await readBank()).balance, 9150000);
   await page.reload();
   await button("Debt").click();
   await debtCard.getByText("Paid Off", { exact: true }).waitFor();
@@ -492,6 +510,7 @@ try {
     Buffer: 100000,
   });
   await save("Save Plan");
+  assert.equal((await readBank()).balance, 9150000, "Plan cannot move money");
   await page.reload();
   assert.equal(
     Number(
@@ -526,6 +545,11 @@ try {
     .click();
   await fill({ Contribution: 500000 });
   await save("Add Progress");
+  assert.equal(
+    (await readBank()).balance,
+    9150000,
+    "Goal progress cannot move money",
+  );
   await page.reload();
   await goalCard.getByText("Completed", { exact: true }).waitFor();
   assert.equal(
@@ -544,6 +568,98 @@ try {
     "PASS browser: Plan allocations and goal contribution survive refresh",
   );
 
+  // v1.1 browser: account reconciliation, edit reversal and transfer lifecycle.
+  const cashText = async () => page.locator(".cash-hero").innerText();
+  const walletId = (
+    await sql`select id from finance_accounts where name=${prefix + " account e_wallet"}`
+  )[0].id;
+  await go("/cash-flow");
+  const expenseCard = page
+    .getByRole("article")
+    .filter({ has: page.getByText(prefix + " expense", { exact: true }) });
+  await closeChecks(
+    expenseCard.getByRole("button", { name: "Edit", exact: true }),
+    "Description",
+  );
+  await expenseCard.getByRole("button", { name: "Edit", exact: true }).click();
+  await fill({ Amount: 300000 });
+  await save("Save Expense");
+  assert.equal((await readBank()).balance, 9100000);
+  await page.reload();
+  await expenseCard.getByRole("button", { name: "Edit", exact: true }).click();
+  await fill({ Amount: 250000 });
+  await save("Save Expense");
+  assert.equal((await readBank()).balance, 9150000);
+  await button("Add Transaction").click();
+  await dialog().getByRole("button", { name: "Transfer", exact: true }).click();
+  await fill({ Amount: 500000, Notes: prefix + " transfer" });
+  await selectBank("From Account");
+  await selectBank("To Account");
+  await dialog()
+    .getByRole("button", { name: "Save Transfer", exact: true })
+    .click();
+  await dialog().getByRole("alert").waitFor();
+  assert.equal(
+    await dialog().getByLabel("Amount", { exact: true }).inputValue(),
+    "500000",
+  );
+  await dialog()
+    .getByLabel("To Account", { exact: true })
+    .selectOption(walletId);
+  await save("Save Transfer");
+  assert.equal((await readBank()).balance, 8650000);
+  assert.equal(
+    (await sql`select balance from finance_accounts where id=${walletId}`)[0]
+      .balance,
+    800000,
+  );
+  await page.reload();
+  const transferCard = page
+    .getByRole("article")
+    .filter({ has: page.getByText(prefix + " transfer", { exact: true }) });
+  await transferCard.waitFor();
+  await go("/dashboard");
+  assert(
+    (await cashText()).includes(rupiah(9950000)),
+    "Liquid transfer does not change available cash",
+  );
+  await go("/cash-flow");
+  await transferCard
+    .getByRole("button", { name: "Revert", exact: true })
+    .click();
+  await save("Revert Transfer");
+  await transferCard.getByText("Reverted", { exact: true }).waitFor();
+  assert.equal((await readBank()).balance, 9150000);
+  await go("/accounts");
+  await bankCard
+    .getByRole("button", { name: "Reconcile Balance", exact: true })
+    .click();
+  await fill({
+    "Actual Balance": 9125000,
+    "Notes (optional)": prefix + " statement",
+  });
+  await save("Reconcile");
+  assert.equal((await readBank()).balance, 9125000);
+  assert.equal(
+    Number(
+      (
+        await sql`select amount from account_movements where description=${prefix + " statement"}`
+      )[0].amount,
+    ),
+    -25000,
+  );
+  await page.reload();
+  await go("/dashboard");
+  assert((await cashText()).includes(rupiah(9925000)));
+  await go("/accounts");
+  await bankCard
+    .getByRole("button", { name: "Reconcile Balance", exact: true })
+    .click();
+  await fill({ "Actual Balance": 9150000 });
+  await save("Reconcile");
+  console.log(
+    "PASS browser v1.1: linked income/expense, edit reversal, transfer validation/persistence/revert, payment account effects, reconciliation and immediate Overview totals.",
+  );
   const metric = async (label) =>
     page
       .locator("section")
@@ -598,7 +714,7 @@ try {
         name: width >= 1024 ? "Primary navigation" : "Mobile navigation",
         exact: true,
       });
-      await nav.getByRole("link", { name: "Cash Flow", exact: true }).waitFor();
+      await nav.getByRole("link", { name: "Activity", exact: true }).waitFor();
       if (route === "/dashboard") {
         const hero = await page.locator(".overview-hero").boundingBox();
         const safe = await page.locator(".overview-safe").boundingBox();
@@ -754,6 +870,8 @@ try {
   await sql`delete from debts where name=${prefix + " debt"}`;
   await sql`delete from financial_goals where name=${prefix + " goal"}`;
   await sql`delete from cfo_notes where content=${prefix + " note"}`;
+  for (const type of ["bank", "cash", "e_wallet", "investment", "other"])
+    await sql`delete from account_movements where account_id in (select id from finance_accounts where name=${prefix + " account " + type})`;
   for (const type of ["bank", "cash", "e_wallet", "investment", "other"])
     await sql`delete from finance_accounts where name=${prefix + " account " + type}`;
   await sql.end();
