@@ -5,7 +5,7 @@ import postgres from "postgres";
 const url = new URL(process.env.QA_DATABASE_URL);
 assert(
   ["localhost", "127.0.0.1"].includes(url.hostname) &&
-    /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
+  /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
 );
 const name = "myfinance_qa_migration_" + randomUUID().replaceAll("-", "");
 const adminUrl = new URL(url);
@@ -118,6 +118,33 @@ try {
   console.log(
     "PASS migration 0004: only funding metadata backfilled from actual month; income history, accounts, ledger and payments unchanged.",
   );
+  for (const category of ['Living', 'Makan', 'Kebutuhan', 'food', 'entertainment', 'investments', 'saving', 'buffer', 'Give', 'Style', 'paket si mamah'])
+    await sql`insert into expenses(user_id,description,category,amount,spent_at) values(${owner.id},${category},${category},100,'2026-10-02')`;
+  const [investment] = await sql`insert into finance_accounts(user_id,name,type,balance) values(${owner.id},'Investment','investment',0) returning id`;
+  const transferId = randomUUID(), reversedId = randomUUID();
+  for (const id of [transferId, reversedId]) {
+    await sql`insert into account_movements(user_id,account_id,type,amount,reference_type,reference_id,description,occurred_at) values
+      (${owner.id},${ids[0]},'transfer_out',-5000000,'transfer',${id},'Investment','2026-10-01'),
+      (${owner.id},${investment.id},'transfer_in',5000000,'transfer',${id},'Investment','2026-10-01')`;
+  }
+  await sql`insert into account_movements(user_id,account_id,type,amount,reference_type,reference_id,description,occurred_at) values(${owner.id},${ids[0]},'reversal',5000000,'transfer',${reversedId},'Reverted','2026-11-01')`;
+  const v12 = {};
+  for (const table of [...tables, 'bills', 'debts', 'account_movements']) v12[table] = await sql.unsafe(`select * from "${table}" order by id`);
+  await sql.begin(async tx => tx.unsafe(await readFile('src/db/migrations/0005_last_darkhawk.sql', 'utf8')));
+  for (const table of Object.keys(v12)) {
+    const after = await sql.unsafe(`select * from "${table}" order by id`);
+    assert.deepEqual(after.map(row => { const copy = { ...row }; if (table === 'expenses') delete copy.plan_category; return copy; }), v12[table].map(row => ({ ...row })));
+  }
+  const mapped = await sql`select category,plan_category from expenses`;
+  for (const category of ['Living', 'Makan', 'Kebutuhan', 'food']) assert.equal(mapped.find(r => r.category === category).plan_category, 'living');
+  for (const category of ['Give', 'Style', 'paket si mamah']) assert.equal(mapped.find(r => r.category === category).plan_category, null);
+  const attributed = await sql`select id,plan_category from transfer_plan_attributions`;
+  assert.deepEqual(attributed.map(r => ({ ...r })), [{ id: transferId, plan_category: 'investments' }]);
+  // Metadata backfill retry leaves financial rows unchanged and creates no duplicate attribution.
+  const attributionMigration = await readFile('src/db/migrations/0005_last_darkhawk.sql', 'utf8');
+  await sql.begin(tx => tx.unsafe(attributionMigration.slice(attributionMigration.indexOf('-- Preserve'))));
+  assert.equal((await sql`select count(*)::int n from transfer_plan_attributions`)[0].n, 1);
+  console.log('PASS migration 0005: exact mapping, ambiguous NULLs, logical investment attribution/reversal exclusion; all financial rows unchanged; backfill retry safe. Rollback is old-code compatible because legacy columns remain.');
 } finally {
   if (sql) await sql.end();
   assert(/^myfinance_qa_migration_[a-f0-9]{32}$/.test(name));

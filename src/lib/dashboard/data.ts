@@ -9,7 +9,6 @@ import {
 } from "@/db/schema";
 import {
   allocationLabels,
-  calculateSafeToSpend,
   financialStatus,
 } from "@/lib/finance/calculations";
 import { billDueDate, currentMonth, formatDate } from "@/lib/dates";
@@ -17,6 +16,8 @@ import { getMonthlyReport } from "@/lib/reports/monthly-report";
 import { requireAuth } from "@/lib/auth/require-auth";
 import { isLiquidAccount } from "@/lib/accounts";
 import { getPlanFunding } from "@/lib/plan-funding";
+import { getPlanUsage } from "@/lib/plan-usage";
+import { isPlanCategory } from "@/lib/plan-categories";
 export async function getDashboardData() {
   await requireAuth();
   const now = new Date();
@@ -60,40 +61,10 @@ export async function getDashboardData() {
     0,
   );
   const budget = Object.entries(report.allocations).map(([key, value]) => ({
-    name: Object.hasOwn(allocationLabels, key) ? allocationLabels[key] : key,
+    name: isPlanCategory(key) ? allocationLabels[key] : key,
     value,
   }));
-  const remainingInstallments = report.activeDebts.reduce(
-    (n, d) =>
-      n +
-      Math.max(
-        0,
-        Math.min(
-          d.remainingAmount,
-          d.installmentAmount -
-            report.debtPayments
-              .filter((p) => p.debtId === d.id)
-              .reduce((paid, p) => paid + p.amount, 0),
-        ),
-      ),
-    0,
-  );
-  const safe = calculateSafeToSpend({
-    cash: cashAvailable,
-    unpaidBills: unpaidTotal,
-    debtPayments: remainingInstallments,
-    essentials: Math.max(
-      0,
-      (report.allocations.living ?? 0) -
-        report.categories
-          .filter(([category]) => ["living", "essential"].includes(category))
-          .reduce((n, [, amount]) => n + amount, 0),
-    ),
-    savings: report.allocations.savings ?? 0,
-    investments: report.allocations.investments ?? 0,
-    buffer: report.allocations.buffer ?? 0,
-    days: 0,
-  });
+  const { safeToSpend: safe } = await getPlanUsage(now, report);
   return {
     month,
     cashAvailable,
@@ -104,7 +75,7 @@ export async function getDashboardData() {
     surplus: report.net,
     savingRate: report.savingRate,
     safe,
-    status: financialStatus(report.net, safe),
+    status: safe === null ? { label: "Create a Plan", tone: "amber" } : financialStatus(report.net, safe),
     cashFlow: report.transactionCount
       ? [{ month, income: report.income, expenses: report.cashOutflow }]
       : [],

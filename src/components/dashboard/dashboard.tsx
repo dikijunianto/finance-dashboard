@@ -129,8 +129,8 @@ export function Dashboard({ data }: { data: Data }) {
           <p className="eyebrow mb-4">Room to breathe</p>
           <Metric
             title="Safe-to-Spend"
-            value={data.hasAccounts ? rupiah(data.safe) : "Not available"}
-            caption="After obligations and planned reserves"
+            value={data.hasAccounts && data.safe !== null ? rupiah(data.safe) : "Not available"}
+            caption={data.safe === null ? "Create a Plan to calculate how much is safe to spend." : "After remaining planned commitments"}
           />
         </section>
         <section className="overview-obligations panel divide-y">

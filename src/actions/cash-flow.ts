@@ -4,7 +4,9 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { expenses, income } from "@/db/schema";
+import { expenses, income, financeAccounts, transferPlanAttributions } from "@/db/schema";
+import { planCategories } from "@/lib/plan-categories";
+import { isLiquidAccount } from "@/lib/accounts";
 import { InputError, mutationResult, requireOwner } from "@/lib/action-result";
 import {
   accountId,
@@ -27,7 +29,7 @@ const record = z.object({
   notes: z.string().trim().max(1000).optional(),
 });
 const expenseInput = record.extend({
-  category: z.string().trim().min(1).max(120),
+  planCategory: z.enum(planCategories),
 });
 const incomeInput = record.extend({
   fundingMonth: z
@@ -97,7 +99,8 @@ export async function createExpense(form: FormData) {
           userId,
           accountId: d.accountId,
           description: d.label,
-          category: d.category,
+          category: d.planCategory,
+          planCategory: d.planCategory,
           amount: d.amount,
           spentAt: d.date,
           notes: d.notes || null,
@@ -121,11 +124,11 @@ export async function createExpense(form: FormData) {
 export async function updateIncome(form: FormData) {
   return mutationResult(async () => {
     const d = incomeInput
-        .extend({
-          id: z.string().uuid(),
-          accountId: accountId.or(z.literal("")),
-        })
-        .parse(Object.fromEntries(form)),
+      .extend({
+        id: z.string().uuid(),
+        accountId: accountId.or(z.literal("")),
+      })
+      .parse(Object.fromEntries(form)),
       userId = await requireOwner(),
       hash = requestHash("update_income", d);
     await db.transaction(async (tx) => {
@@ -208,8 +211,8 @@ export async function updateIncome(form: FormData) {
 export async function updateExpense(form: FormData) {
   return mutationResult(async () => {
     const d = expenseInput
-        .extend({ id: z.string().uuid() })
-        .parse(Object.fromEntries(form)),
+      .extend({ id: z.string().uuid(), accountId: accountId.or(z.literal("")) })
+      .parse(Object.fromEntries(form)),
       userId = await requireOwner(),
       hash = requestHash("update_expense", d);
     await db.transaction(async (tx) => {
@@ -220,6 +223,18 @@ export async function updateExpense(form: FormData) {
         .for("update");
       if (!old)
         throw new InputError("Transaction no longer exists. Refresh the page.");
+      // Attribution/description/notes-only edits must not replay any money movement.
+      if (old.amount === d.amount && (old.accountId ?? "") === d.accountId && old.spentAt === d.date) {
+        if (await wasApplied(tx, userId, d.requestId, hash)) return;
+        await tx.update(expenses).set({
+          planCategory: d.planCategory,
+          description: d.label,
+          notes: d.notes || null,
+          updatedAt: new Date(),
+        }).where(eq(expenses.id, d.id));
+        return;
+      }
+      if (!d.accountId) throw new InputError("Select an account to change this legacy transaction's amount or date.");
       const rows = await sourceMovements(tx, userId, "expense", d.id);
       await lockAccounts(tx, userId, [
         d.accountId,
@@ -240,7 +255,7 @@ export async function updateExpense(form: FormData) {
         .set({
           accountId: d.accountId,
           description: d.label,
-          category: d.category,
+          planCategory: d.planCategory,
           amount: d.amount,
           spentAt: d.date,
           notes: d.notes || null,
@@ -322,6 +337,7 @@ export async function createTransfer(form: FormData) {
         date: z.string().date(),
         notes: z.string().trim().max(1000).optional(),
         requestId,
+        planImpact: z.enum(["none", "savings"]).default("none"),
       })
       .parse(Object.fromEntries(form));
     if (d.fromAccountId === d.toAccountId)
@@ -336,6 +352,13 @@ export async function createTransfer(form: FormData) {
       if (await wasApplied(tx, userId, d.requestId, hash)) return;
       await lockAccounts(tx, userId, ids, ids);
       const referenceId = randomUUID();
+      const [from] = await tx.select().from(financeAccounts).where(eq(financeAccounts.id, d.fromAccountId));
+      const [to] = await tx.select().from(financeAccounts).where(eq(financeAccounts.id, d.toAccountId));
+      const liquidSource = isLiquidAccount(from);
+      if (d.planImpact === "savings" && (!liquidSource || to.type === "investment"))
+        throw new InputError("Savings impact requires a liquid source and non-investment destination.");
+      const planCategory = liquidSource && to.type === "investment" ? "investments" : d.planImpact === "savings" ? "savings" : null;
+      if (planCategory) await tx.insert(transferPlanAttributions).values({ id: referenceId, userId, planCategory });
       await moveMoney(tx, userId, {
         accountId: d.fromAccountId,
         amount: -d.amount,

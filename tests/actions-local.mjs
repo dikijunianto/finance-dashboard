@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 const url = new URL(process.env.QA_DATABASE_URL);
 assert(
   ["127.0.0.1", "localhost"].includes(url.hostname) &&
-    /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
+  /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
   "Only isolated local QA allowed",
 );
 process.env.DATABASE_URL = url.href;
@@ -72,6 +72,7 @@ const { currentMonth, jakartaDate } = await import("../src/lib/dates.ts");
 const { getMonthlyReport } =
   await import("../src/lib/reports/monthly-report.ts");
 const { getDashboardData } = await import("../src/lib/dashboard/data.ts");
+const { getPlanUsage } = await import("../src/lib/plan-usage.ts");
 const sql = postgres(url.href);
 const form = (data) => {
   const f = new FormData();
@@ -80,6 +81,7 @@ const form = (data) => {
     requestId: randomUUID(),
     date: jakartaDate(),
     category: data.notes || "Other",
+    planCategory: "living",
     ...data,
   }))
     f.set(k, String(v));
@@ -104,6 +106,7 @@ try {
   }
   await assert.rejects(() => getMonthlyReport(), /REDIRECT:\/login/);
   await assert.rejects(() => getDashboardData(), /REDIRECT:\/login/);
+  await assert.rejects(() => getPlanUsage(), /REDIRECT:\/login/);
   await session.createSession("qa-local");
   assert.equal((await session.getSession()).username, "qa-local");
   const saved = jar.get("finance_session");
@@ -1359,6 +1362,88 @@ try {
   console.log(
     "PASS v1.2: bill spending once, debt outflow not spending, actual-date reports vs independent funding, funding-only edits/retries without movements, legacy override, transfer/adjustment exclusion, Overview agreement.",
   );
+  // v1.3 fixture in an otherwise unused month. Source economics remain unchanged by attribution.
+  const fixtureDate = '2030-10-02', fixtureMonth = '2030-10-01';
+  const fixtureNow = new Date(fixtureDate + 'T12:00:00+07:00');
+  const usageBefore = await getPlanUsage(fixtureNow);
+  assert.equal(usageBefore.safeToSpend, null, 'No Plan never fabricates Safe-to-Spend');
+  const ids = [];
+  for (const [suffix, type] of [[' bank', 'bank'], [' wallet', 'e_wallet'], [' investment', 'investment'], [' savings', 'bank']]) {
+    assert.equal((await accounts.createAccount(form({ name: prefix + ' v13' + suffix, type, balance: 0 }))).success, true);
+    ids.push((await sql`select id from finance_accounts where name=${prefix + ' v13' + suffix}`)[0].id);
+  }
+  const [fixtureBank, fixtureWallet, fixtureInvestment, fixtureSavings] = ids;
+  assert.equal((await cash.createIncome(form({ accountId: fixtureBank, label: prefix + ' v13 salary', amount: 30000000, date: '2030-09-30', fundingMonth: fixtureMonth }))).success, true);
+  assert.equal((await cash.createExpense(form({ accountId: fixtureBank, label: prefix + ' v13 living', amount: 4000000, date: fixtureDate, planCategory: 'living' }))).success, true);
+  const [fixtureExpense] = await sql`select * from expenses where description=${prefix + ' v13 living'}`;
+  const fixtureBalance = await amountAt(fixtureBank);
+  const fixtureLedger = await sql`select * from account_movements where account_id=${fixtureBank} order by id`;
+  assert.equal((await cash.updateExpense(form({ id: fixtureExpense.id, accountId: fixtureBank, label: fixtureExpense.description, amount: 4000000, date: fixtureDate, planCategory: 'lifestyle' }))).success, true);
+  assert.equal(await amountAt(fixtureBank), fixtureBalance);
+  assert.deepEqual(await sql`select * from account_movements where account_id=${fixtureBank} order by id`, fixtureLedger);
+  let fixtureUsage = await getPlanUsage(fixtureNow);
+  assert.equal(fixtureUsage.usage.living, 0); assert.equal(fixtureUsage.usage.lifestyle, 4000000);
+  assert.equal((await cash.updateExpense(form({ id: fixtureExpense.id, accountId: fixtureBank, label: fixtureExpense.description, amount: 4000000, date: fixtureDate, planCategory: 'living' }))).success, true);
+  assert.equal((await cash.createExpense(form({ accountId: fixtureBank, label: prefix + ' v13 legacy', amount: 1255951, date: fixtureDate, planCategory: 'buffer' }))).success, true);
+  await sql`update expenses set plan_category=null where description=${prefix + ' v13 legacy'}`;
+  assert.equal((await bills.createBill(form({ name: prefix + ' v13 bill', category: 'Other', amount: 438000, dueDay: 2 }))).success, true);
+  const [fixtureBill] = await sql`select id from bills where name=${prefix + ' v13 bill'}`;
+  assert.equal((await bills.markBillPaid(form({ id: fixtureBill.id, accountId: fixtureBank, date: fixtureDate }))).success, true);
+  // Existing action pays the current billing cycle; fixture models an October 2030 cycle.
+  await sql`update bill_payments set billing_month=${fixtureMonth} where bill_id=${fixtureBill.id}`;
+  for (const [suffix, amount] of [[' paid', 6987699], [' pending', 4600000]]) {
+    assert.equal((await bills.createDebt(form({ name: prefix + ' v13' + suffix, lender: 'QA', originalAmount: amount, remainingAmount: amount, installmentAmount: amount, dueDay: 5 }))).success, true);
+  }
+  const [fixtureDebt] = await sql`select id from debts where name=${prefix + ' v13 paid'}`;
+  assert.equal((await bills.recordDebtPayment(form({ id: fixtureDebt.id, accountId: fixtureBank, amount: 6987699, date: fixtureDate }))).success, true);
+  const reportBeforeTransfer = await getMonthlyReport(fixtureNow);
+  for (const [destination, amount, planImpact] of [[fixtureInvestment, 5000000, 'none'], [fixtureWallet, 500000, 'none'], [fixtureSavings, 200000, 'savings']]) {
+    assert.equal((await cash.createTransfer(form({ fromAccountId: fixtureBank, toAccountId: destination, amount, date: fixtureDate, planImpact }))).success, true);
+  }
+  fixtureUsage = await getPlanUsage(fixtureNow);
+  assert.equal(fixtureUsage.usage.investments, 5000000);
+  assert.equal(fixtureUsage.usage.savings, 200000);
+  assert.equal(fixtureUsage.usage.bills_debt, 7425699);
+  assert.equal(fixtureUsage.uncategorizedCount, 1);
+  assert.equal(fixtureUsage.funding.amount, 30000000);
+  for (const key of ['income', 'spending', 'cashOutflow', 'net']) assert.equal((await getMonthlyReport(fixtureNow))[key], reportBeforeTransfer[key]);
+  const [savingsTransfer] = await sql`select reference_id from account_movements where account_id=${fixtureSavings} and type='transfer_in'`;
+  assert.equal((await cash.revertTransfer(form({ id: savingsTransfer.reference_id }))).success, true);
+  assert.equal((await getPlanUsage(fixtureNow)).usage.savings, 0);
+  const [investmentTransfer] = await sql`select reference_id from account_movements where account_id=${fixtureInvestment} and type='transfer_in'`;
+  assert.equal((await cash.revertTransfer(form({ id: investmentTransfer.reference_id }))).success, true);
+  assert.equal((await getPlanUsage(fixtureNow)).usage.investments, 0);
+  assert.equal((await cash.createTransfer(form({ fromAccountId: fixtureBank, toAccountId: fixtureInvestment, amount: 5000000, date: fixtureDate }))).success, true);
+  const beforePlan = await sql`select id,balance from finance_accounts order by id`;
+  const ledgerBeforePlan = await sql`select * from account_movements order by id`;
+  assert.equal((await plan.updateMonthlyPlan(form({ month: fixtureMonth, calendarMonth: month, bills_debt: 12000000, living: 10000000, savings: 0, investments: 5000000, lifestyle: 3000000, buffer: 0 }))).success, true);
+  assert.deepEqual(await sql`select id,balance from finance_accounts order by id`, beforePlan);
+  assert.deepEqual(await sql`select * from account_movements order by id`, ledgerBeforePlan);
+  fixtureUsage = await getPlanUsage(fixtureNow);
+  assert.equal(fixtureUsage.remaining.living, 6000000);
+  assert.equal(fixtureUsage.remaining.investments, 0);
+  assert.equal(fixtureUsage.protectedBillsDebt, 4600000);
+  assert.equal(fixtureUsage.safeToSpend, 1718350);
+  assert.equal((await cash.updateExpense(form({ id: fixtureExpense.id, accountId: fixtureBank, label: fixtureExpense.description, amount: 4100000, date: fixtureDate, planCategory: 'living' }))).success, true);
+  assert.equal((await getPlanUsage(fixtureNow)).remaining.living,5900000);
+  assert.equal((await cash.updateExpense(form({ id: fixtureExpense.id, accountId: fixtureBank, label: fixtureExpense.description, amount: 4000000, date: '2030-11-02', planCategory: 'living' }))).success, true);
+  assert.equal((await getPlanUsage(fixtureNow)).usage.living,0,'Usage follows the effective actual date, not old movement dates');
+  assert.equal((await cash.updateExpense(form({ id: fixtureExpense.id, accountId: fixtureBank, label: fixtureExpense.description, amount: 4000000, date: fixtureDate, planCategory: 'living' }))).success, true);
+  const reportAfter = await getMonthlyReport(fixtureNow);
+  assert.equal(reportAfter.income, 0); assert.equal(reportAfter.spending, 5693951); assert.equal(reportAfter.cashOutflow, 12681650);
+  assert.equal((await cash.createExpense(form({ accountId: fixtureBank, label: 'invalid category', amount: 1, planCategory: 'Food' }))).success, false);
+  await bills.deleteBill(form({ id: fixtureBill.id }));
+  for (const row of await sql`select id from debts where name like ${prefix + ' v13%'}`) await bills.deleteDebt(form({ id: row.id }));
+  assert.equal((await getPlanUsage(fixtureNow)).usage.bills_debt,0,'Deleted/reversed payments cease consuming Plan');
+  assert.equal((await cash.deleteExpense(form({id:fixtureExpense.id}))).success,true);
+  assert.equal((await getPlanUsage(fixtureNow)).usage.living,0,'Deleted expenses cease consuming Plan');
+  await sql`delete from budgets where month=${fixtureMonth}`;
+  await sql`delete from transfer_plan_attributions where user_id=${owner} and id in (select reference_id from account_movements where account_id=any(${ids}))`;
+  for (const id of ids) {
+    await sql`delete from expenses where account_id=${id}`; await sql`delete from income where account_id=${id}`;
+    await sql`delete from account_movements where account_id=${id}`; await sql`delete from finance_accounts where id=${id}`;
+  }
+  console.log('PASS v1.3: canonical category validation, category-only ledger preservation, actual attribution, paired transfers/reversal, optional Savings, no-Plan null, Plan-only edits, exact current-data fixture and unchanged Reports.');
   const { db } = await import("../src/db/index.ts");
   await db.$client.end();
   assert.equal(

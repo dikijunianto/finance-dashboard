@@ -120,11 +120,11 @@ try {
   await dialog().getByRole("button", { name: "Expense", exact: true }).click();
   await fill({
     Description: prefix + " groceries",
-    Category: "living",
     Amount: 250000,
     Date: "2026-10-10",
   });
   await dialog().getByLabel("Paid From", { exact: true }).selectOption(bank.id);
+  await dialog().getByLabel("Plan Category", {exact:true}).selectOption("living");
   await save("Save Expense");
   await go("/bills");
   await button("+ Add Bill").click();

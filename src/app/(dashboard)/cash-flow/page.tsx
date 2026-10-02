@@ -9,6 +9,7 @@ import {
   billPayments,
   debts,
   debtPayments,
+  transferPlanAttributions,
 } from "@/db/schema";
 import {
   CashFlowPage,
@@ -16,8 +17,10 @@ import {
 } from "@/components/cash-flow/cash-flow-page";
 import { requireOwner } from "@/lib/action-result";
 import { currentMonth, jakartaDate } from "@/lib/dates";
+import { isPlanCategory } from "@/lib/plan-categories";
 import { getMonthlyReport } from "@/lib/reports/monthly-report";
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Promise<{ planCategory?: string }> }) {
+  const requestedFilter = (await searchParams).planCategory;
   const userId = await requireOwner();
   const [
     incomes,
@@ -27,6 +30,7 @@ export default async function Page() {
     paidBills,
     paidDebts,
     summary,
+    transferPlans,
   ] = await Promise.all([
     db
       .select()
@@ -58,6 +62,7 @@ export default async function Page() {
       .innerJoin(debts, eq(debts.id, debtPayments.debtId))
       .where(eq(debtPayments.userId, userId)),
     getMonthlyReport(),
+    db.select().from(transferPlanAttributions).where(eq(transferPlanAttributions.userId, userId)),
   ]);
   const name = (id: string | null) =>
     accounts.find((a) => a.id === id)?.name ?? "Unlinked / legacy";
@@ -89,6 +94,7 @@ export default async function Page() {
       date: x.spentAt,
       notes: x.notes ?? "",
       category: x.category,
+      planCategory: x.planCategory,
       type: "expense" as const,
       accountId: x.accountId,
       context: linked("expense", x.id)
@@ -107,6 +113,7 @@ export default async function Page() {
           ? ""
           : "Legacy payment — actual date not recorded.",
         category: "Bill Payment",
+        planCategory: "bills_debt",
         type: "movement" as const,
         accountId: x.payment.accountId,
         context: name(x.payment.accountId),
@@ -119,6 +126,7 @@ export default async function Page() {
       date: x.payment.paidAt,
       notes: x.payment.notes ?? "",
       category: "Debt Payment",
+      planCategory: "bills_debt",
       type: "movement" as const,
       accountId: x.payment.accountId,
       context: name(x.payment.accountId),
@@ -138,6 +146,7 @@ export default async function Page() {
           notes: "",
           category: "",
           type: "transfer" as const,
+          planCategory: transferPlans.find(p => p.id === m.referenceId)?.planCategory ?? null,
           accountId: m.accountId,
           context:
             name(m.accountId) + " → " + name(destination?.accountId ?? null),
@@ -178,6 +187,7 @@ export default async function Page() {
   ].sort((a, b) => b.date.localeCompare(a.date));
   return (
     <CashFlowPage
+      initialFilter={requestedFilter === "uncategorized" || isPlanCategory(requestedFilter) ? requestedFilter : "all"}
       items={items}
       accounts={accounts}
       month={currentMonth().month}

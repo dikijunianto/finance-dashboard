@@ -4,7 +4,7 @@ import postgres from "postgres";
 const url = new URL(process.env.QA_DATABASE_URL);
 assert(
   ["127.0.0.1", "localhost"].includes(url.hostname) &&
-    /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
+  /^\/myfinance_qa(?:_[a-z0-9]+)?$/.test(url.pathname),
   "Only an isolated local QA database is allowed",
 );
 const sql = postgres(url.href);
@@ -54,6 +54,8 @@ try {
       before,
     );
   }
+  const [attribution] = await sql`select 1 present from information_schema.columns where table_name='expenses' and column_name='plan_category'`;
+  if (!attribution) await sql.begin(async tx => tx.unsafe(await readFile('src/db/migrations/0005_last_darkhawk.sql', 'utf8')));
   console.log("Isolated local QA schema ready; balances preserved.");
 } finally {
   await sql.end();

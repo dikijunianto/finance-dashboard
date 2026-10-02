@@ -92,10 +92,8 @@ async function closeChecks(trigger, label) {
     else
       await dialog().getByRole("button", { name: close, exact: true }).click();
     await dialog().waitFor({ state: "hidden" });
-    assert(
-      await trigger.evaluate((el) => el === document.activeElement),
-      "Focus returns to trigger",
-    );
+    await trigger.waitFor({state:'visible'});
+    await page.waitForFunction(el => el === document.activeElement, await trigger.elementHandle());
     await trigger.click();
     await dialog().waitFor();
     assert.equal(
@@ -348,9 +346,9 @@ try {
     Description: prefix + " expense",
     Amount: 250000,
     Date: jakartaDate(),
-    Category: "living",
   });
   await selectBank("Paid From");
+  await dialog().getByLabel("Plan Category", {exact:true}).selectOption("living");
   await save("Save Expense");
   assert.equal((await readBank()).balance, 9750000);
   await page.reload();

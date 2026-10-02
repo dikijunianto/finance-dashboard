@@ -1,10 +1,6 @@
-import { and, gte, lt } from "drizzle-orm";
-import { db } from "@/db";
-import { budgets } from "@/db/schema";
 import { PlanPage } from "@/components/plan/plan-page";
-import { allocationTotals } from "@/lib/finance/calculations";
 import { currentMonth, monthStart } from "@/lib/dates";
-import { getPlanFunding } from "@/lib/plan-funding";
+import { getPlanUsage } from "@/lib/plan-usage";
 import { MonthSelect } from "@/components/ui/month-select";
 import { requireAuth } from "@/lib/auth/require-auth";
 export default async function Page({
@@ -15,14 +11,8 @@ export default async function Page({
   await requireAuth();
   const start =
     monthStart((await searchParams).month ?? "") ?? currentMonth().start;
-  const { next } = currentMonth(new Date(start + "T12:00:00+07:00"));
-  const [funding, budgetRows] = await Promise.all([
-    getPlanFunding(start),
-    db
-      .select()
-      .from(budgets)
-      .where(and(gte(budgets.month, start), lt(budgets.month, next))),
-  ]);
+  const actual = await getPlanUsage(new Date(start + "T12:00:00+07:00"));
+  const { funding } = actual;
   return (
     <>
       <div className="page pb-0">
@@ -37,7 +27,8 @@ export default async function Page({
           date: x.receivedAt,
           amount: x.amount,
         }))}
-        values={allocationTotals(budgetRows)}
+        values={actual.allocations}
+        actual={actual}
         month={start}
       />
     </>

@@ -6,14 +6,7 @@ import { db } from "@/db";
 import { budgets, user } from "@/db/schema";
 import { InputError, mutationResult, requireOwner } from "@/lib/action-result";
 import { currentMonth } from "@/lib/dates";
-const categories = [
-  "bills_debt",
-  "living",
-  "savings",
-  "investments",
-  "lifestyle",
-  "buffer",
-] as const;
+import { planCategories as categories } from "@/lib/plan-categories";
 const amount = z.coerce.number().int().min(0).max(2_147_483_647);
 const plan = z.object({
   bills_debt: amount,

@@ -15,16 +15,20 @@ import { allocationLabels as labels } from "@/lib/finance/calculations";
 import { formatMonth, formatDate, currentMonth } from "@/lib/dates";
 import { MutationForm } from "@/components/ui/mutation-form";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { isPlanCategory } from "@/lib/plan-categories";
+import type { getPlanUsage } from "@/lib/plan-usage";
 export function PlanPage({
   income,
   values,
   month,
   sources,
+  actual,
 }: {
   income: number;
   values: Record<string, number>;
   month: string;
   sources: { id: string; source: string; date: string; amount: number }[];
+  actual: Awaited<ReturnType<typeof getPlanUsage>>;
 }) {
   const [open, setOpen] = useState(false);
   const allocated = Object.values(values).reduce((a, b) => a + b, 0);
@@ -101,7 +105,7 @@ export function PlanPage({
                 max={Math.max(1, income)}
               />
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm text-slate-500">Remaining</p>
+                <p className="text-sm text-slate-500">Unallocated Funding</p>
                 <StatusBadge
                   tone={
                     remaining === 0
@@ -133,7 +137,8 @@ export function PlanPage({
                 </button>
               </DialogTrigger>
             </div>
-            <p className="mt-2 text-sm text-muted">Your allocation board</p>
+            <p className="mt-2 text-sm text-muted">Planned versus actual usage · transfers can use Plan without being spending.</p>
+            {actual.uncategorizedCount > 0 && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{actual.uncategorizedCount} transactions need a Plan category. <a href="/cash-flow?planCategory=uncategorized" className="underline">Review in Activity</a></p>}
             <div className="mt-6 divide-y">
               {Object.entries({
                 ...Object.fromEntries(
@@ -142,7 +147,10 @@ export function PlanPage({
                 ...labels,
               }).map(([key, label]) => {
                 const amount = values[key] ?? 0;
-                const pct = income ? Math.round((amount / income) * 100) : 0;
+                const used = isPlanCategory(key) ? actual.usage[key] : 0;
+                const left = isPlanCategory(key) ? actual.remaining[key] : Math.max(amount - used, 0);
+                const over = isPlanCategory(key) ? actual.overage[key] : Math.max(used - amount, 0);
+                const pct = amount ? Math.round((used / amount) * 100) : used ? 100 : 0;
                 return (
                   <div
                     key={key}
@@ -150,16 +158,19 @@ export function PlanPage({
                   >
                     <div>
                       <p className="text-sm text-muted">{label}</p>
-                      <p className="mt-1 text-xl font-semibold">
-                        {rupiah(amount)}
-                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <Metric label="Planned" value={amount} />
+                        <Metric label="Used" value={used} />
+                        <Metric label="Remaining" value={left} />
+                      </div>
+                      {over > 0 && <p className="mt-2 text-sm text-red-700">Over by {rupiah(over)}</p>}
                     </div>
                     <div className="self-center">
                       <p className="mb-2 text-right text-sm font-medium">
-                        {pct}%
+                        {pct}% used
                       </p>
                       <progress
-                        aria-label={`${label} allocation`}
+                        aria-label={`${label} usage`}
                         className="h-2 w-full"
                         value={Math.max(0, Math.min(pct, 100))}
                         max={100}
@@ -174,6 +185,7 @@ export function PlanPage({
               <Metric label="Allocated" value={allocated} />
               <Metric label={`Remaining · ${status}`} value={remaining} />
             </div>
+            <div className="mt-4 border-t pt-4"><Metric label="Total Used This Month" value={actual.totalUsed} /></div>
           </section>
         </div>
         <DialogContent>

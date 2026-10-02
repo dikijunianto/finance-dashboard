@@ -36,6 +36,7 @@ import {
 } from "@/lib/dates";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { allocationLabels, planCategories, isPlanCategory } from "@/lib/plan-categories";
 export type ActivityItem = {
   id: string;
   label: string;
@@ -49,16 +50,19 @@ export type ActivityItem = {
   linked: boolean;
   reverted?: boolean;
   fundingMonth?: string;
+  planCategory?: string | null;
 };
 export function CashFlowPage({
   items,
   month,
   accounts,
   summary,
+  initialFilter = "all",
 }: {
   items: ActivityItem[];
   month: string;
   accounts: AccountOption[];
+  initialFilter?: string;
   summary: {
     income: number;
     spending: number;
@@ -66,6 +70,8 @@ export function CashFlowPage({
     net: number;
   };
 }) {
+  const [filter, setFilter] = useState(initialFilter);
+  const filteredItems = items.filter(tx => filter === "all" || (filter === "uncategorized" ? tx.type === "expense" && !isPlanCategory(tx.planCategory) : tx.planCategory === filter));
   return (
     <div className="page">
       <header className="flex flex-wrap items-end justify-between gap-4">
@@ -84,11 +90,18 @@ export function CashFlowPage({
         <Stat label="Net Cash Flow" value={summary.net} />
       </div>
       <section className="mt-8">
+        <label className="mb-4 block text-sm">Plan Category
+          <select aria-label="Filter Plan Category" value={filter} onChange={e => setFilter(e.target.value)} className="ml-3 rounded-lg border p-2">
+            <option value="all">All</option>
+            {planCategories.map(c => <option key={c} value={c}>{allocationLabels[c]}</option>)}
+            <option value="uncategorized">Uncategorized</option>
+          </select>
+        </label>
         <h2 className="border-b pb-5 text-xl font-semibold">
           Account Activity
         </h2>
-        {items.length ? (
-          Object.entries(Object.groupBy(items, (tx) => tx.date))
+        {filteredItems.length ? (
+          Object.entries(Object.groupBy(filteredItems, (tx) => tx.date))
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([date, rows]) => (
               <div
@@ -110,7 +123,7 @@ export function CashFlowPage({
                           {tx.type === "movement"
                             ? tx.category
                             : tx.type === "expense"
-                              ? tx.category
+                              ? isPlanCategory(tx.planCategory) ? allocationLabels[tx.planCategory] : "Uncategorized"
                               : tx.type === "transfer"
                                 ? "Transfer"
                                 : "Income"}{" "}
@@ -125,7 +138,7 @@ export function CashFlowPage({
                         <strong
                           className={
                             tx.type === "income" ||
-                            (tx.type === "movement" && tx.amount > 0)
+                              (tx.type === "movement" && tx.amount > 0)
                               ? "text-brand"
                               : ""
                           }
@@ -187,7 +200,7 @@ function TransactionDialog({
   const [date, setDate] = useState(initialDate);
   const [fundingMonth, setFundingMonth] = useState(
     item?.fundingMonth?.slice(0, 7) ??
-      suggestedFundingMonth(initialDate).slice(0, 7),
+    suggestedFundingMonth(initialDate).slice(0, 7),
   );
   const [fundingChosen, setFundingChosen] = useState(!!item);
   const [type, setType] = useState<"income" | "expense" | "transfer">(
@@ -198,7 +211,7 @@ function TransactionDialog({
     setDate(initialDate);
     setFundingMonth(
       item?.fundingMonth?.slice(0, 7) ??
-        suggestedFundingMonth(initialDate).slice(0, 7),
+      suggestedFundingMonth(initialDate).slice(0, 7),
     );
     setFundingChosen(!!item);
   };
@@ -236,9 +249,10 @@ function TransactionDialog({
         </DialogHeader>
         {item && !item.linked && (
           <p className="text-sm text-muted">
-            This legacy record has no balance effect. Selecting an account
-            applies the full updated amount to that account. For income, keep it
-            unlinked to change only its Plan funding.
+            This legacy record has no balance effect. Keep its account, amount
+            and date unchanged to edit only its description, notes or Plan
+            attribution. Changing its account, amount or date applies the full
+            updated amount to the selected account.
           </p>
         )}
         <MutationForm
@@ -280,13 +294,18 @@ function TransactionDialog({
           )}
           {type === "expense" && (
             <label className="mt-4 block text-sm">
-              Category
-              <input
-                name="category"
+              Plan Category
+              <select
+                name="planCategory"
+                aria-label="Plan Category"
                 required
-                defaultValue={item?.category ?? ""}
+                defaultValue={item?.planCategory ?? ""}
                 className="mt-2 w-full rounded-xl border p-2.5"
-              />
+              >
+                <option value="" disabled>Choose a Plan category</option>
+                {planCategories.map(c => <option key={c} value={c}>{allocationLabels[c]}</option>)}
+              </select>
+              <span className="mt-1 block text-xs text-muted">Which part of your monthly plan should this use?</span>
             </label>
           )}
           <label className="mt-4 block text-sm">
@@ -314,15 +333,22 @@ function TransactionDialog({
                 name="toAccountId"
                 label="To Account"
               />
+              <label className="mt-4 block text-sm">Plan Impact
+                <select name="planImpact" aria-label="Plan Impact" defaultValue="none" className="mt-2 w-full rounded-xl border p-2.5">
+                  <option value="none">No Plan Impact</option>
+                  <option value="savings">Savings</option>
+                </select>
+                <span className="mt-1 block text-xs text-muted">Liquid-to-investment transfers automatically use Investments. Savings is only for non-investment transfers.</span>
+              </label>
             </>
           ) : (
             <AccountSelect
               accounts={accounts}
               label={type === "income" ? "Received To" : "Paid From"}
-              retainCurrent={type === "income" && !!item?.accountId}
-              required={!(type === "income" && item && !item.linked)}
+              retainCurrent={!!item?.accountId}
+              required={!(item && !item.linked)}
               defaultValue={
-                item && (item.linked || type === "income")
+                item
                   ? (item.accountId ?? "")
                   : ""
               }
@@ -387,7 +413,7 @@ function TransactionDialog({
               className="button-primary"
               disabled={
                 !accounts.some((a) => a.isActive) &&
-                !(type === "income" && item)
+                !item
               }
             >
               {type === "transfer"

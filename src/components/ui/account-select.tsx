@@ -26,7 +26,7 @@ export function AccountSelect({
         className="mt-2 w-full rounded-xl border p-2.5"
       >
         <option value="" disabled={required}>
-          {required ? "Select an account" : "Keep unlinked (funding only)"}
+          {required ? "Select an account" : "Keep unlinked (metadata only)"}
         </option>
         {accounts
           .filter((a) => a.isActive || (retainCurrent && a.id === defaultValue))

@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { registerHooks } from "node:module";
+registerHooks({
+  resolve(specifier, context, next) {
+    if (specifier.startsWith('.') && !/\.[a-z]+$/.test(specifier)) return next(specifier + '.ts', context);
+    return next(specifier, context);
+  }
+});
 import {
   currentMonth,
   jakartaDate,
@@ -7,14 +14,32 @@ import {
   suggestedFundingMonth,
   monthStart,
 } from "../src/lib/dates.ts";
-import {
+const {
   allocationTotals,
   calculateMonthlySurplus,
   isDebtPaidOff,
   isGoalCompleted,
   progressPercent,
-} from "../src/lib/finance/calculations.ts";
+} = await import("../src/lib/finance/calculations.ts");
 import { rupiah } from "../src/lib/currency.ts";
+const { calculatePlanUsage } = await import("../src/lib/finance/plan-usage.ts");
+test("actual Plan usage reserves remaining amounts once, excludes Lifestyle and unknown expenses", () => {
+  const input = { hasPlan: true, allocations: { living: 10000000, investments: 5000000, bills_debt: 12000000, lifestyle: 3000000 }, expenses: [{ amount: 4000000, planCategory: 'living' }, { amount: 50000, planCategory: null }], paidBills: 438000, debtPayments: 6987699, transfers: [{ amount: 5000000, planCategory: 'investments' }], cash: 12318350, unpaidObligations: 4600000 };
+  const result = calculatePlanUsage(input);
+  assert.equal(result.remaining.living, 6000000);
+  assert.equal(result.remaining.investments, 0);
+  assert.equal(result.usage.bills_debt, 7425699);
+  assert.equal(result.protectedBillsDebt, 4600000);
+  assert.equal(result.safeToSpend, 1718350);
+  assert.equal(result.uncategorizedCount, 1);
+  assert.equal(calculatePlanUsage({ ...input, hasPlan: false }).safeToSpend, null);
+  const over = calculatePlanUsage({ ...input, allocations: { living: 1000000 } });
+  assert.equal(over.remaining.living, 0);
+  assert.equal(over.overage.living, 3000000);
+  const categoryEdit = calculatePlanUsage({ ...input, expenses: [{ amount: 100000, planCategory: 'lifestyle' }] });
+  assert.equal(categoryEdit.usage.living, 0);
+  assert.equal(categoryEdit.usage.lifestyle, 100000);
+});
 test("funding suggestions follow approved cutoff and never shift dates", () => {
   for (const [date, expected] of [
     ["2026-09-24", "2026-09-01"],
