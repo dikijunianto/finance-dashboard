@@ -19,6 +19,7 @@ import {
 } from "@/lib/finance/calculations";
 import { currentMonth } from "@/lib/dates";
 import { requireAuth } from "@/lib/auth/require-auth";
+import { allocationLabels, isPlanCategory } from "@/lib/plan-categories";
 export async function getMonthlyReport(now = new Date()) {
   await requireAuth();
   const { month, start, next } = currentMonth(now);
@@ -45,7 +46,7 @@ export async function getMonthlyReport(now = new Date()) {
       db.select().from(debts),
       db.select().from(goals),
       db
-        .select({ amount: billPayments.amount, category: bills.category })
+        .select({ amount: billPayments.amount })
         .from(billPayments)
         .innerJoin(bills, eq(bills.id, billPayments.billId))
         .where(
@@ -81,14 +82,25 @@ export async function getMonthlyReport(now = new Date()) {
     transactionCount:
       incomes.length + expenseRows.length + paidBills.length + payments.length,
     categories: Object.entries(
-      [...expenseRows, ...paidBills].reduce<Record<string, number>>(
+      [
+        ...expenseRows.map((e) => ({
+          amount: e.amount,
+          category: isPlanCategory(e.planCategory)
+            ? allocationLabels[e.planCategory]
+            : "Uncategorized",
+        })),
+        ...paidBills.map((p) => ({
+          amount: p.amount,
+          category: allocationLabels.bills_debt,
+        })),
+      ].reduce<Record<string, number>>(
         (a, e) => {
           a[e.category] = (a[e.category] ?? 0) + e.amount;
           return a;
         },
         Object.create(null) as Record<string, number>,
       ),
-    ),
+    ).filter(([, amount]) => amount !== 0).sort(([, a], [, b]) => b - a),
     debtPaid,
     debtPayments: payments,
     debtRemaining: activeDebts.reduce(
